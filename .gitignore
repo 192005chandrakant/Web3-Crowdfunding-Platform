@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Lockfiles
+# Keep package-lock.json files committed when they already exist.
+
+# Environment files
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+.next/
+dist/
+build/
+out/
+coverage/
+artifacts/
+cache/
+typechain/
+
+# Hardhat / Solidity
+deployments/
+ignition/deployments/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/settings.json
+
+# Test output
+.nyc_output/
+
+# Misc
+*.tsbuildinfo
