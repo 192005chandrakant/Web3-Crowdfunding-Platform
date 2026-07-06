@@ -10,7 +10,7 @@ The platform is designed to reduce the risk of upfront fund misappropriation by 
 
 The architecture is split into four layers:
 
-- Frontend: Next.js, React, Tailwind CSS, wagmi, viem, and Framer Motion.
+- Frontend:  React, Tailwind CSS, wagmi, viem, and Framer Motion.
 - Backend: Node.js, Express.js, MongoDB Atlas, Zod, and Pinata IPFS integration.
 - Blockchain: Solidity smart contracts deployed through Hardhat to Polygon and Ganache for local testing.
 - Indexing: The Graph for fast event-driven reads and historical campaign state.

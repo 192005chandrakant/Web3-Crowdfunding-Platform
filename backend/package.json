@@ -8,12 +8,20 @@
     "start": "node src/app.js"
   },
   "dependencies": {
+    "@clerk/clerk-sdk-node": "^4.13.23",
     "@pinata/sdk": "^2.1.0",
+    "@upstash/redis": "^1.38.0",
+    "cloudinary": "^2.10.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
+    "ethers": "^6.17.0",
     "express": "^5.2.1",
-    "multer": "^2.2.0",
+    "graphql": "^17.0.1",
+    "graphql-yoga": "^5.21.2",
     "mongoose": "^9.7.3",
+    "multer": "^2.2.0",
+    "resend": "^6.17.0",
+    "svix": "^1.96.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

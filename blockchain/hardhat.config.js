@@ -25,7 +25,11 @@ module.exports = {
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []
     },
     polygon_amoy: {
-      url: process.env.ALCHEMY_AMOY_URL || process.env.ALCHEMY_RPC_URL || "",
+      url:
+        process.env.ALCHEMY_AMOY_URL ||
+        process.env.ALCHEMY_RPC_URL ||
+        "https://rpc-amoy.polygon.technology",
+      chainId: 80002,
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []
     }
   }

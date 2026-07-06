@@ -1,34 +1,26 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-abstract contract ReentrancyGuard {
-    uint256 private constant NOT_ENTERED = 1;
-    uint256 private constant ENTERED = 2;
-
-    uint256 private _status = NOT_ENTERED;
-
-    modifier nonReentrant() {
-        require(_status != ENTERED, "ReentrancyGuard: reentrant call");
-        _status = ENTERED;
-        _;
-        _status = NOT_ENTERED;
-    }
-}
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract Campaign is ReentrancyGuard {
+    enum CampaignState { Active, Paused, Successful, Cancelled }
+
     struct Milestone {
-        string title;
         uint256 targetAmount;
         uint256 deadline;
-        string ipfsProofHash;
         uint256 approvalVotes;
         uint256 rejectionVotes;
         bool isCurrent;
         bool isPaid;
+        string title;
+        string ipfsProofHash;
     }
 
+    error AlreadyInitialized();
     error NotCreator();
     error NotContributor();
+    error InvalidState();
     error InvalidContribution();
     error InvalidMilestone();
     error MilestoneNotActive();
@@ -40,11 +32,16 @@ contract Campaign is ReentrancyGuard {
     error TransferFailed();
     error ArrayLengthMismatch();
 
+    bool private _initialized;
+    
+    CampaignState public state;
     address public creator;
     address public hospitalAddress;
+    
     uint256 public fundraisingGoal;
     uint256 public totalFundsRaised;
     uint256 public totalFundsRemaining;
+    uint256 public refundPool;
 
     Milestone[] public milestones;
     mapping(address => uint256) public contributions;
@@ -54,50 +51,62 @@ contract Campaign is ReentrancyGuard {
     mapping(uint256 => uint256) public milestoneSnapshotBlock;
     mapping(uint256 => uint256) public milestoneSnapshotTotalWeight;
 
+    event CampaignInitialized(address indexed creator, uint256 goal);
     event ContributionReceived(address indexed contributor, uint256 amount);
     event MilestoneProofSubmitted(uint256 indexed milestoneIndex, string cid);
     event MilestoneVoted(uint256 indexed milestoneIndex, address indexed voter, bool support, uint256 weight);
     event TrancheExecuted(uint256 indexed milestoneIndex, address indexed recipient, uint256 amount);
     event RefundClaimed(address indexed contributor, uint256 amount);
+    event CampaignStateChanged(CampaignState newState);
 
     modifier onlyCreator() {
         if (msg.sender != creator) revert NotCreator();
         _;
     }
 
-    constructor(
+    modifier inState(CampaignState _state) {
+        if (state != _state) revert InvalidState();
+        _;
+    }
+
+    function initialize(
         address creator_,
         uint256 goal_,
         address hospitalAddress_,
         string[] memory titles,
         uint256[] memory targetAmounts,
         uint256[] memory deadlines
-    ) {
+    ) external {
+        if (_initialized) revert AlreadyInitialized();
         if (titles.length != targetAmounts.length || titles.length != deadlines.length) {
             revert ArrayLengthMismatch();
         }
 
+        _initialized = true;
         creator = creator_;
         fundraisingGoal = goal_;
         hospitalAddress = hospitalAddress_;
+        state = CampaignState.Active;
 
         for (uint256 i = 0; i < titles.length; i++) {
             milestones.push(
                 Milestone({
-                    title: titles[i],
                     targetAmount: targetAmounts[i],
                     deadline: deadlines[i],
-                    ipfsProofHash: "",
                     approvalVotes: 0,
                     rejectionVotes: 0,
                     isCurrent: false,
-                    isPaid: false
+                    isPaid: false,
+                    title: titles[i],
+                    ipfsProofHash: ""
                 })
             );
         }
+
+        emit CampaignInitialized(creator_, goal_);
     }
 
-    function contribute() external payable nonReentrant {
+    function contribute() external payable nonReentrant inState(CampaignState.Active) {
         if (msg.value == 0) revert InvalidContribution();
 
         contributions[msg.sender] += msg.value;
@@ -108,7 +117,7 @@ contract Campaign is ReentrancyGuard {
         emit ContributionReceived(msg.sender, msg.value);
     }
 
-    function submitMilestoneProof(uint256 index, string memory _cid) external onlyCreator {
+    function submitMilestoneProof(uint256 index, string memory _cid) external onlyCreator inState(CampaignState.Active) {
         if (index >= milestones.length) revert InvalidMilestone();
 
         for (uint256 i = 0; i < milestones.length; i++) {
@@ -124,7 +133,7 @@ contract Campaign is ReentrancyGuard {
         emit MilestoneProofSubmitted(index, _cid);
     }
 
-    function voteOnMilestone(uint256 index, bool support) external {
+    function voteOnMilestone(uint256 index, bool support) external inState(CampaignState.Active) {
         if (index >= milestones.length) revert InvalidMilestone();
 
         Milestone storage milestone = milestones[index];
@@ -146,7 +155,7 @@ contract Campaign is ReentrancyGuard {
         emit MilestoneVoted(index, msg.sender, support, weight);
     }
 
-    function executeTranche(uint256 index) external nonReentrant {
+    function executeTranche(uint256 index) external nonReentrant inState(CampaignState.Active) {
         if (index >= milestones.length) revert InvalidMilestone();
 
         Milestone storage milestone = milestones[index];
@@ -169,17 +178,38 @@ contract Campaign is ReentrancyGuard {
         milestone.isCurrent = false;
         totalFundsRemaining -= payout;
 
+        bool allPaid = true;
+        for (uint256 i = 0; i < milestones.length; i++) {
+            if (!milestones[i].isPaid) {
+                allPaid = false;
+                break;
+            }
+        }
+        if (allPaid) {
+            state = CampaignState.Successful;
+            emit CampaignStateChanged(state);
+        }
+
         (bool success, ) = payable(recipient).call{value: payout}("");
         if (!success) revert TransferFailed();
 
         emit TrancheExecuted(index, recipient, payout);
     }
 
-    function claimRefund() external nonReentrant {
-        uint256 contribution = contributions[msg.sender];
-        if (contribution == 0 || totalFundsRaised == 0 || totalFundsRemaining == 0) revert NothingToRefund();
+    function cancelCampaign() external {
+        if (msg.sender != creator) revert NotCreator();
+        if (state != CampaignState.Active && state != CampaignState.Paused) revert InvalidState();
+        
+        state = CampaignState.Cancelled;
+        refundPool = totalFundsRemaining; 
+        emit CampaignStateChanged(state);
+    }
 
-        uint256 refundAmount = (contribution * totalFundsRemaining) / totalFundsRaised;
+    function claimRefund() external nonReentrant inState(CampaignState.Cancelled) {
+        uint256 contribution = contributions[msg.sender];
+        if (contribution == 0 || totalFundsRaised == 0 || refundPool == 0) revert NothingToRefund();
+
+        uint256 refundAmount = (contribution * refundPool) / totalFundsRaised;
         if (refundAmount == 0) revert NothingToRefund();
 
         contributions[msg.sender] = 0;

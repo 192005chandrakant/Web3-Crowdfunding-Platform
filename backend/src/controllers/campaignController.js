@@ -1,97 +1,66 @@
-const PinataClient = require("@pinata/sdk");
-const Campaign = require("../models/Campaign");
-const { createCampaignSchema, campaignAddressSchema } = require("../config/validators");
+const {
+  createOrUpdateCampaign,
+  getCampaignWithBlockchainState,
+  listCampaigns,
+  updateCampaignMetadata
+} = require("../services/campaignService");
 
-function parseZodResult(schema, payload) {
-  const result = schema.safeParse(payload);
-  if (!result.success) {
-    const error = new Error("Validation failed");
-    error.statusCode = 400;
-    error.details = result.error.flatten();
-    throw error;
-  }
+async function createCampaign(req, res) {
+  const payload = req.validated.body;
+  const campaign = await createOrUpdateCampaign({
+    ...payload,
+    contractAddress: payload.contractAddress.toLowerCase(),
+    creatorAddress: payload.creatorAddress.toLowerCase(),
+    hospitalAddress: payload.hospitalAddress ? payload.hospitalAddress.toLowerCase() : null
+  });
 
-  return result.data;
+  res.status(201).json({ success: true, campaign });
 }
 
-function createPinataClient() {
-  const apiKey = process.env.PINATA_API_KEY;
-  const apiSecret = process.env.PINATA_API_SECRET;
-  if (apiKey && apiSecret) {
-    return new PinataClient(apiKey, apiSecret);
+async function getCampaignByAddress(req, res) {
+  const { address } = req.validated.params;
+  const normalizedAddress = address.toLowerCase();
+  const result = await getCampaignWithBlockchainState(normalizedAddress);
+
+  if (!result) {
+    return res.status(404).json({ success: false, message: "Campaign not found" });
   }
 
-  if (process.env.PINATA_JWT) {
-    return new PinataClient({ pinataJWTKey: process.env.PINATA_JWT });
-  }
-
-  throw new Error("Missing Pinata credentials");
+  res.json({
+    success: true,
+    campaign: result.campaign,
+    blockchainState: result.blockchainState
+  });
 }
 
-async function createCampaign(req, res, next) {
-  try {
-    const payload = parseZodResult(createCampaignSchema, req.body);
-    const campaign = await Campaign.findOneAndUpdate(
-      { contractAddress: payload.contractAddress },
-      { $set: payload },
-      { new: true, upsert: true }
-    );
+async function listCampaignsHandler(req, res) {
+  const query = req.validated.query;
+  const result = await listCampaigns({
+    page: query.page,
+    limit: query.limit,
+    category: query.category,
+    creatorAddress: query.creator ? query.creator.toLowerCase() : undefined,
+    search: query.search
+  });
 
-    res.status(201).json({ success: true, campaign });
-  } catch (error) {
-    next(error);
-  }
+  res.json({ success: true, ...result });
 }
 
-async function getCampaignByAddress(req, res, next) {
-  try {
-    const { address } = parseZodResult(campaignAddressSchema, req.params);
-    const campaign = await Campaign.findOne({ contractAddress: address }).lean();
+async function patchCampaign(req, res) {
+  const { address } = req.validated.params;
+  const updates = req.validated.body;
+  const campaign = await updateCampaignMetadata(address.toLowerCase(), updates);
 
-    if (!campaign) {
-      return res.status(404).json({ success: false, message: "Campaign not found" });
-    }
-
-    res.json({
-      success: true,
-      campaign,
-      blockchainState: {
-        contractAddress: address,
-        totalFundsRaised: null,
-        totalFundsRemaining: null,
-        latestMilestoneStatus: "pending_index_sync"
-      }
-    });
-  } catch (error) {
-    next(error);
+  if (!campaign) {
+    return res.status(404).json({ success: false, message: "Campaign not found" });
   }
-}
 
-async function uploadProof(req, res, next) {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: "Proof file is required" });
-    }
-
-    const pinata = createPinataClient();
-    const pinResult = await pinata.pinBuffer(req.file.buffer, {
-      pinataMetadata: {
-        name: req.file.originalname
-      }
-    });
-
-    res.status(201).json({
-      success: true,
-      cid: pinResult.IpfsHash || pinResult.cid,
-      fileName: req.file.originalname
-    });
-  } catch (error) {
-    next(error);
-  }
+  res.json({ success: true, campaign });
 }
 
 module.exports = {
   createCampaign,
   getCampaignByAddress,
-  uploadProof
+  listCampaignsHandler,
+  patchCampaign
 };
