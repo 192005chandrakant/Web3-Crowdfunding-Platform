@@ -19,7 +19,14 @@ async function requireAdmin(req, res, next) {
       });
     }
 
-    // Check env-based admin list first (fast path)
+    // Check database role
+    const user = await User.findOne({ walletAddress: wallet.toLowerCase() }).lean();
+    if (user && user.role === "admin" && user.accountStatus !== "suspended" && user.accountStatus !== "rejected") {
+      req.isAdmin = true;
+      return next();
+    }
+
+    // Bootstrap fallback: allowlisted wallets can seed the first admin account.
     const envAdmins = process.env.ADMIN_WALLET_ADDRESSES;
     if (envAdmins) {
       const adminList = envAdmins
@@ -31,13 +38,6 @@ async function requireAdmin(req, res, next) {
         req.isAdmin = true;
         return next();
       }
-    }
-
-    // Check database role
-    const user = await User.findOne({ walletAddress: wallet.toLowerCase() }).lean();
-    if (user && user.role === "admin") {
-      req.isAdmin = true;
-      return next();
     }
 
     return res.status(403).json({

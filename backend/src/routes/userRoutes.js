@@ -11,7 +11,7 @@ const {
   updateVerificationSchema,
   walletAddressParamSchema
 } = require("../config/validators");
-const { upsertUser, getUserByWallet, updateVerification } = require("../controllers/userController");
+const { upsertUser, getUserByWallet, getCurrentUser, updateVerification } = require("../controllers/userController");
 
 const router = express.Router();
 
@@ -21,6 +21,12 @@ router.post(
   validateRequest(upsertUserSchema, "body"),
   requireMatchingWalletBody,
   asyncHandler(upsertUser)
+);
+
+router.get(
+  "/me",
+  requireSiweAuth,
+  asyncHandler(getCurrentUser)
 );
 
 router.get(

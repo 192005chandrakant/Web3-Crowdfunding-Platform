@@ -2,88 +2,129 @@ const { Webhook } = require("svix");
 const User = require("../models/User");
 const { getEnvConfig } = require("../config/env");
 
+/**
+ * POST /api/webhooks/clerk
+ * Processes Clerk user lifecycle events to keep the User model in sync.
+ *
+ * Identity strategy:
+ *  - Match by clerkUserId first (most stable).
+ *  - If not found, try email match to prevent duplicate accounts.
+ *  - If user found by email, link clerkUserId to that existing record.
+ *  - When Clerk reports a new web3 wallet, push it to walletAddresses[].
+ */
 async function handleClerkWebhook(req, res) {
   const env = getEnvConfig();
   const WEBHOOK_SECRET = env.clerk.webhookSecret;
 
   if (!WEBHOOK_SECRET) {
-    console.error("Please add CLERK_WEBHOOK_SECRET from Clerk Dashboard to .env");
+    console.error("[ClerkWebhook] CLERK_WEBHOOK_SECRET is not set in env.");
     return res.status(500).json({ success: false, message: "Server misconfiguration" });
   }
 
-  // Get the headers
-  const svix_id = req.headers["svix-id"];
+  const svix_id        = req.headers["svix-id"];
   const svix_timestamp = req.headers["svix-timestamp"];
   const svix_signature = req.headers["svix-signature"];
 
-  // If there are no Svix headers, error out
   if (!svix_id || !svix_timestamp || !svix_signature) {
-    return res.status(400).json({
-      success: false,
-      message: "Error occured -- no svix headers",
-    });
+    return res.status(400).json({ success: false, message: "Missing svix headers" });
   }
 
-  // Get the body
   const payload = req.body.toString("utf8");
   const headers = {
-    "svix-id": svix_id,
+    "svix-id":        svix_id,
     "svix-timestamp": svix_timestamp,
-    "svix-signature": svix_signature,
+    "svix-signature": svix_signature
   };
 
-  // Create a new Webhook instance with your secret
   const wh = new Webhook(WEBHOOK_SECRET);
-
   let evt;
 
-  // Verify the payload with the headers
   try {
     evt = wh.verify(payload, headers);
   } catch (err) {
-    console.error("Error verifying webhook:", err.message);
-    return res.status(400).json({
-      success: false,
-      message: "Error verifying webhook",
-    });
+    console.error("[ClerkWebhook] Signature verification failed:", err.message);
+    return res.status(400).json({ success: false, message: "Webhook verification failed" });
   }
 
-  // Get the ID and type
-  const { id } = evt.data;
-  const eventType = evt.type;
-
-  console.log(`Webhook with an ID of ${id} and type of ${eventType}`);
-  console.log("Webhook body:", evt.data);
+  const clerkUserId = evt.data.id;
+  const eventType   = evt.type;
+  console.log(`[ClerkWebhook] event=${eventType} clerkUserId=${clerkUserId}`);
 
   try {
+    // ── user.created / user.updated ──────────────────────────────────────────
     if (eventType === "user.created" || eventType === "user.updated") {
       const email = evt.data.email_addresses?.[0]?.email_address || "";
-      const displayName = evt.data.first_name 
-        ? `${evt.data.first_name} ${evt.data.last_name || ""}`.trim() 
-        : evt.data.username || "";
-      const web3Wallet = evt.data.web3_wallets?.[0]?.web3_wallet?.toLowerCase() || null;
+      const displayName = evt.data.first_name
+        ? `${evt.data.first_name} ${evt.data.last_name || ""}`.trim()
+        : (evt.data.username || "");
 
-      await User.findOneAndUpdate(
-        { clerkUserId: id },
-        {
-          clerkUserId: id,
-          email: email,
-          displayName: displayName,
-          ...(web3Wallet ? { walletAddress: web3Wallet } : {}),
-        },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
-    } else if (eventType === "user.deleted") {
-      await User.findOneAndDelete({ clerkUserId: id });
+      // Extract web3 wallet from Clerk (may be null for email-only accounts)
+      const web3WalletRaw = evt.data.web3_wallets?.[0]?.web3_wallet || null;
+      const web3Wallet = web3WalletRaw ? web3WalletRaw.toLowerCase() : null;
+
+      // ── 1. Try to find by clerkUserId (most precise) ──
+      let existingUser = await User.findOne({ clerkUserId });
+
+      // ── 2. If not found, try email (dedup: same person signed up via wallet earlier) ──
+      if (!existingUser && email) {
+        existingUser = await User.findOne({ email: email.toLowerCase() });
+        if (existingUser) {
+          console.log(`[ClerkWebhook] Linking clerkUserId ${clerkUserId} to existing user ${existingUser.walletAddress} via email match`);
+        }
+      }
+
+      // ── 3. Build the update ──
+      const $set = {
+        clerkUserId,
+        email: email.toLowerCase() || existingUser?.email || "",
+        displayName: displayName || existingUser?.displayName || ""
+      };
+
+      // Link web3 wallet as primary if the record doesn't have one yet
+      if (web3Wallet) {
+        if (!existingUser?.walletAddress) {
+          $set.walletAddress = web3Wallet;
+        }
+      }
+
+      const $addToSet = {};
+      if (web3Wallet) {
+        $addToSet.walletAddresses = web3Wallet;
+      }
+
+      const updateOp = { $set };
+      if (Object.keys($addToSet).length > 0) {
+        updateOp.$addToSet = $addToSet;
+      }
+
+      const query = existingUser
+        ? { _id: existingUser._id }
+        : { clerkUserId };
+
+      await User.findOneAndUpdate(query, updateOp, {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true
+      });
+
+      console.log(`[ClerkWebhook] User synced: clerkUserId=${clerkUserId} wallet=${web3Wallet || "none"}`);
     }
-    
-    return res.status(200).json({ success: true, message: "Webhook received" });
+
+    // ── user.deleted ──────────────────────────────────────────────────────────
+    // We soft-delete by suspending, not hard-deleting, so donation history is preserved.
+    else if (eventType === "user.deleted") {
+      await User.findOneAndUpdate(
+        { clerkUserId },
+        { $set: { accountStatus: "suspended" } }
+      );
+      console.log(`[ClerkWebhook] User suspended on Clerk delete: clerkUserId=${clerkUserId}`);
+    }
+
+    return res.status(200).json({ success: true });
   } catch (error) {
-    console.error("Error processing webhook:", error);
+    console.error("[ClerkWebhook] Processing error:", error);
     return res.status(500).json({ success: false, message: "Error processing webhook" });
   }
 }
 
-module.exports = {
-  handleClerkWebhook
-};
+module.exports = { handleClerkWebhook };

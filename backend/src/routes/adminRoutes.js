@@ -6,25 +6,64 @@ const { requireAdmin } = require("../middleware/adminAuth");
 const {
   adminListUsersQuerySchema,
   adminUpdateRoleSchema,
+  adminReviewUserSchema,
+  updateVerificationSchema,
   adminFlagCampaignSchema,
   adminUpdateCampaignStatusSchema,
   adminPaginationQuerySchema,
+  adminLedgerQuerySchema,
+  adminAuditLogQuerySchema,
   walletAddressParamSchema,
   campaignAddressSchema
 } = require("../config/validators");
 const {
   listAllUsers,
   updateUserRole,
+  reviewUserAccount,
+  updateUserVerification,
   flagCampaign,
   listFlaggedCampaigns,
   updateCampaignStatus,
   getPlatformHealth,
-  getPlatformStats
+  getPlatformStats,
+  getRecentActivity,
+  listAuditLogs,
+  getLedger,
+  getDonationsOverTime,
+  getUserGrowth,
+  getCampaignCategoryBreakdown,
+  getRoleDistribution
 } = require("../controllers/adminController");
 
 const router = express.Router();
 
-// All admin routes require SIWE auth + admin role
+// ─── Public Analytics & Ledger ───
+// GET /api/admin/health — platform health status
+router.get("/health", asyncHandler(getPlatformHealth));
+
+// GET /api/admin/stats — platform-wide statistics
+router.get("/stats", asyncHandler(getPlatformStats));
+
+// GET /api/admin/activity — platform-wide recent activity feed
+router.get("/activity", asyncHandler(getRecentActivity));
+
+// GET /api/admin/ledger — platform-wide transaction ledger
+router.get(
+  "/ledger",
+  requireSiweAuth,
+  requireAdmin,
+  validateRequest(adminLedgerQuerySchema, "query"),
+  asyncHandler(getLedger)
+);
+
+// ─── Public Analytics Charts ───
+router.get("/analytics/donations-over-time", asyncHandler(getDonationsOverTime));
+router.get("/analytics/user-growth", asyncHandler(getUserGrowth));
+router.get("/analytics/campaign-categories", asyncHandler(getCampaignCategoryBreakdown));
+router.get("/analytics/role-distribution", asyncHandler(getRoleDistribution));
+
+
+// All subsequent admin routes require SIWE auth + admin role
 router.use(requireSiweAuth, requireAdmin);
 
 // ─── Users ───
@@ -41,6 +80,21 @@ router.patch(
   validateRequest(walletAddressParamSchema, "params"),
   validateRequest(adminUpdateRoleSchema, "body"),
   asyncHandler(updateUserRole)
+);
+
+router.patch(
+  "/users/:walletAddress/review",
+  validateRequest(walletAddressParamSchema, "params"),
+  validateRequest(adminReviewUserSchema, "body"),
+  asyncHandler(reviewUserAccount)
+);
+
+// PATCH /api/admin/users/:walletAddress/verify — change user verification status
+router.patch(
+  "/users/:walletAddress/verify",
+  validateRequest(walletAddressParamSchema, "params"),
+  validateRequest(updateVerificationSchema, "body"),
+  asyncHandler(updateUserVerification)
 );
 
 // ─── Campaigns ───
@@ -68,10 +122,11 @@ router.patch(
 );
 
 // ─── Platform ───
-// GET /api/admin/health — deep platform health check
-router.get("/health", asyncHandler(getPlatformHealth));
-
-// GET /api/admin/stats — platform-wide statistics
-router.get("/stats", asyncHandler(getPlatformStats));
+// GET /api/admin/audit-logs — audit trail for moderation and role changes
+router.get(
+  "/audit-logs",
+  validateRequest(adminAuditLogQuerySchema, "query"),
+  asyncHandler(listAuditLogs)
+);
 
 module.exports = router;

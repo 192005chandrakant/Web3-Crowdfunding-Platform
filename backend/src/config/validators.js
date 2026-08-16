@@ -1,5 +1,7 @@
 const { z } = require("zod");
-const { CAMPAIGN_CATEGORIES, VERIFICATION_STATUS, NOTIFICATION_TYPES } = require("./constants");
+const { CAMPAIGN_CATEGORIES, VERIFICATION_STATUS, NOTIFICATION_TYPES, USER_ROLES, ACCOUNT_STATUSES } = require("./constants");
+
+const DEFAULT_CHAIN_ID = Number(process.env.CHAIN_ID) || 80002;
 
 const ethAddress = z.string().trim().regex(/^0x[a-fA-F0-9]{40}$/);
 
@@ -22,7 +24,7 @@ const createCampaignSchema = z.object({
   coverImageUrl: z.string().url().optional().nullable().or(z.literal("")).default(""),
   tags: z.array(z.string().trim().min(1).max(40)).max(12).optional().default([]),
   status: z.enum(["draft", "active", "completed", "cancelled", "suspended"]).optional().default("active"),
-  chainId: z.number().int().positive().optional().default(80002)
+  chainId: z.number().int().positive().optional().default(DEFAULT_CHAIN_ID)
 });
 
 const updateCampaignSchema = z
@@ -50,6 +52,12 @@ const listCampaignsQuerySchema = z.object({
   search: z.string().trim().min(1).max(120).optional()
 });
 
+const listMilestoneReviewsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(24),
+  search: z.string().trim().min(1).max(120).optional()
+});
+
 const proofUploadMetadataSchema = z.object({
   contractAddress: ethAddress.optional(),
   milestoneIndex: z.coerce.number().int().min(0).optional()
@@ -59,8 +67,28 @@ const upsertUserSchema = z.object({
   walletAddress: ethAddress.optional().nullable(),
   clerkUserId: z.string().trim().min(1).max(120).optional().nullable(),
   displayName: z.string().trim().max(120).optional().default(""),
-  email: z.string().email().optional().default(""),
-  role: z.enum(["donor", "creator", "admin"]).optional().default("donor")
+  email: z.string().email().optional().or(z.literal("")).default(""),
+  role: z.enum(USER_ROLES).optional(),
+  requestedRole: z.enum(USER_ROLES).optional(),
+  preferences: z.object({
+    notifications: z.object({
+      email: z.boolean().optional(),
+      donations: z.boolean().optional(),
+      milestones: z.boolean().optional(),
+      votes: z.boolean().optional(),
+      updates: z.boolean().optional()
+    }).optional(),
+    privacy: z.object({
+      publicProfile: z.boolean().optional(),
+      showDonations: z.boolean().optional(),
+      showCampaigns: z.boolean().optional()
+    }).optional(),
+    appearance: z.object({
+      language: z.string().trim().optional(),
+      currency: z.string().trim().optional(),
+      theme: z.string().trim().optional()
+    }).optional()
+  }).optional()
 });
 
 const updateVerificationSchema = z.object({
@@ -69,6 +97,12 @@ const updateVerificationSchema = z.object({
   verificationDepositTxHash: z.string().trim().optional(),
   worldIdVerified: z.boolean().optional(),
   gitcoinPassportScore: z.number().min(0).max(100).optional()
+});
+
+const adminReviewUserSchema = z.object({
+  decision: z.enum(["approve", "reject"]),
+  role: z.enum(USER_ROLES).optional(),
+  reviewNotes: z.string().trim().max(500).optional().default("")
 });
 
 const walletAddressParamSchema = z.object({
@@ -122,7 +156,7 @@ const blockchainEventSchema = z.object({
   contractAddress: ethAddress,
   txHash: z.string().trim().regex(/^0x[a-fA-F0-9]{64}$/),
   blockNumber: z.number().int().min(0),
-  chainId: z.number().int().positive().optional().default(80002),
+  chainId: z.number().int().positive().optional().default(DEFAULT_CHAIN_ID),
   data: z.record(z.string(), z.unknown()).optional().default({})
 });
 
@@ -141,12 +175,13 @@ const listEventsQuerySchema = z.object({
 const adminListUsersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(50).optional().default(20),
-  role: z.enum(["donor", "creator", "admin"]).optional(),
+  role: z.enum(USER_ROLES).optional(),
+  accountStatus: z.enum(ACCOUNT_STATUSES).optional(),
   search: z.string().trim().min(1).max(120).optional()
 });
 
 const adminUpdateRoleSchema = z.object({
-  role: z.enum(["donor", "creator", "admin"])
+  role: z.enum(USER_ROLES)
 });
 
 const adminFlagCampaignSchema = z.object({
@@ -163,14 +198,58 @@ const adminPaginationQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional().default(20)
 });
 
+const adminLedgerQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(25),
+  search: z.string().trim().min(1).max(120).optional(),
+  status: z.enum(["confirmed", "pending", "failed"]).optional(),
+  type: z.enum(["donation", "refund", "release"]).optional()
+});
+
+const adminAuditLogQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(25),
+  action: z.enum([
+    "user_role_updated",
+    "user_verification_updated",
+    "campaign_flagged",
+    "campaign_unflagged",
+    "campaign_status_updated",
+    "admin_seeded"
+  ]).optional(),
+  resourceType: z.enum(["user", "campaign", "platform"]).optional(),
+  search: z.string().trim().min(1).max(120).optional()
+});
+
+// ── Campaign stats / donor list schemas ─────────────────────────────────────
+
+const campaignStatsParamSchema = z.object({
+  address: ethAddress
+});
+
+const campaignDonorsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(20)
+});
+
+const recentDonationsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(20).optional().default(10)
+});
+
+const creatorAddressParamSchema = z.object({
+  creatorAddress: ethAddress
+});
+
 module.exports = {
   createCampaignSchema,
   updateCampaignSchema,
   campaignAddressSchema,
   listCampaignsQuerySchema,
+  listMilestoneReviewsQuerySchema,
   proofUploadMetadataSchema,
   upsertUserSchema,
   updateVerificationSchema,
+  adminReviewUserSchema,
   walletAddressParamSchema,
   createNotificationSchema,
   notificationIdSchema,
@@ -184,5 +263,12 @@ module.exports = {
   adminUpdateRoleSchema,
   adminFlagCampaignSchema,
   adminUpdateCampaignStatusSchema,
-  adminPaginationQuerySchema
+  adminPaginationQuerySchema,
+  adminLedgerQuerySchema,
+  adminAuditLogQuerySchema,
+  campaignStatsParamSchema,
+  campaignDonorsQuerySchema,
+  recentDonationsQuerySchema,
+  creatorAddressParamSchema
 };
+
