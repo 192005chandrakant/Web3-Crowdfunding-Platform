@@ -1,6 +1,20 @@
-import { SignIn } from "@clerk/clerk-react";
+import { useEffect } from "react";
+import { Navigate } from "react-router-dom";
+import { SignIn, useAuth } from "@clerk/clerk-react";
 
 export function SignInPage() {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      window.location.replace("/");
+    }
+  }, [isLoaded, isSignedIn]);
+
+  if (isLoaded && isSignedIn) {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] py-12 px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-md space-y-8 animate-fade-in">
@@ -18,6 +32,7 @@ export function SignInPage() {
             routing="path" 
             path="/sign-in" 
             signUpUrl="/sign-up"
+            fallbackRedirectUrl="/"
             appearance={{
               elements: {
                 rootBox: "w-full",

@@ -1,46 +1,53 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, ShieldAlert, Flag, Target, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Search, ShieldAlert, Flag, Target, AlertTriangle, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { GlassCard, Button, Badge, Skeleton, StatusChip } from '@/components/ui';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiCampaign } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 export function AdminCampaignsPage() {
-  const { address } = useAccount(); const { isSignedIn: siwe, getToken } = useAuth();
   const queryClient = useQueryClient();
   
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'flagged'>('all');
+  const [page, setPage] = useState(1);
+  const limit = 20;
 
-  // We fetch all campaigns if 'all' or 'active', and specific flagged campaigns if 'flagged'
-  // (Assuming api.listCampaigns can return flagged if we don't filter them out, 
-  // but we also have adminListFlaggedCampaigns for a dedicated view)
+  // Debounce search input
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1); // Reset to page 1 on new search
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
+
   const { data: campaignsData, isLoading } = useQuery({
-    queryKey: ['adminCampaigns', filter, searchQuery],
+    queryKey: ['adminCampaigns', filter, debouncedSearch, page],
     queryFn: () => filter === 'flagged' 
-      ? api.adminListFlaggedCampaigns({ limit: 50 }, siwe!)
-      : api.listCampaigns({ limit: 50, search: searchQuery || undefined }),
-    enabled: !!siwe
+      ? api.adminListFlaggedCampaigns({ page, limit })
+      : api.listCampaigns({ 
+          page, 
+          limit, 
+          search: debouncedSearch || undefined,
+          status: filter === 'active' ? 'active' : undefined
+        }),
   });
 
   const campaigns = campaignsData?.items ?? [];
-
-  // Local search fallback
-  const filteredCampaigns = campaigns.filter(c => {
-    const matchesSearch = !searchQuery || 
-      c.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      c.contractAddress.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = filter === 'all' || 
-      (filter === 'active' && c.status === 'active') ||
-      (filter === 'flagged' && c.isFlagged);
-    return matchesSearch && matchesFilter;
-  });
+  const totalPages = campaignsData?.pagination?.totalPages || 1;
 
   // Flag Mutation
   const flagMutation = useMutation({
     mutationFn: ({ address, flagged, reason }: { address: string, flagged: boolean, reason: string }) => 
-      api.adminFlagCampaign(address, flagged, reason, siwe!),
+      api.adminFlagCampaign(address, flagged, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminCampaigns'] });
       toast.success('Campaign flag status updated');
@@ -51,7 +58,7 @@ export function AdminCampaignsPage() {
   // Status Mutation
   const statusMutation = useMutation({
     mutationFn: ({ address, status }: { address: string, status: string }) => 
-      api.adminUpdateCampaignStatus(address, status, siwe!),
+      api.adminUpdateCampaignStatus(address, status),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminCampaigns'] });
       toast.success('Campaign status updated');
@@ -60,7 +67,7 @@ export function AdminCampaignsPage() {
   });
 
   const handleFlagToggle = (campaign: ApiCampaign) => {
-    if (campaign.isFlagged) {
+    if (campaign.flagged || campaign.isFlagged) {
       if (window.confirm('Remove flag from this campaign?')) {
         flagMutation.mutate({ address: campaign.contractAddress, flagged: false, reason: '' });
       }
@@ -138,7 +145,7 @@ export function AdminCampaignsPage() {
                     <td className="py-4 pl-4"><Skeleton className="h-8 w-24 ml-auto" /></td>
                   </tr>
                 ))
-              ) : filteredCampaigns.length === 0 ? (
+              ) : campaigns.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-12 text-center text-slate-500">
                     <Target className="w-12 h-12 text-slate-700 mx-auto mb-3" />
@@ -146,7 +153,7 @@ export function AdminCampaignsPage() {
                   </td>
                 </tr>
               ) : (
-                filteredCampaigns.map((campaign) => (
+                campaigns.map((campaign) => (
                   <tr key={campaign.contractAddress} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
                     <td className="py-3 pr-4 max-w-[250px]">
                       <div className="flex items-center gap-3">
@@ -185,7 +192,7 @@ export function AdminCampaignsPage() {
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      {campaign.isFlagged ? (
+                      {campaign.flagged || campaign.isFlagged ? (
                         <div className="flex flex-col gap-1">
                           <Badge variant="danger" className="w-fit flex items-center gap-1">
                             <AlertTriangle className="w-3 h-3" /> Flagged
@@ -206,7 +213,7 @@ export function AdminCampaignsPage() {
                           className="px-2 py-1.5 rounded-lg text-xs font-medium bg-slate-800/50 border border-white/[0.08] text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary-500/50 transition-colors"
                         >
                           <option value="active">Active</option>
-                          <option value="paused">Paused</option>
+                          <option value="suspended">Suspended</option>
                           <option value="completed">Completed</option>
                           <option value="cancelled">Cancelled</option>
                         </select>
@@ -214,11 +221,11 @@ export function AdminCampaignsPage() {
                         <button
                           onClick={() => handleFlagToggle(campaign)}
                           className={`p-1.5 rounded-lg border transition-colors ${
-                            campaign.isFlagged 
-                              ? 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20'
+                            campaign.flagged || campaign.isFlagged 
+                              ? 'bg-red-500/10 border-red-500/50 dark:border-red-500/40 text-red-400 hover:bg-red-500/20'
                               : 'bg-slate-800/50 border-white/[0.08] text-slate-400 hover:text-red-400 hover:bg-red-500/10'
                           }`}
-                          title={campaign.isFlagged ? 'Remove Flag' : 'Flag Campaign'}
+                          title={campaign.flagged || campaign.isFlagged ? 'Remove Flag' : 'Flag Campaign'}
                         >
                           <Flag className="w-4 h-4" />
                         </button>
@@ -230,7 +237,38 @@ export function AdminCampaignsPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Server-side Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6 pt-6 border-t border-white/[0.06]">
+            <div className="text-sm text-slate-400">
+              Page {page} of {totalPages}
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                disabled={page === 1}
+                onClick={() => setPage(p => p - 1)}
+                className="border-white/[0.08] hover:bg-slate-800"
+              >
+                <ChevronLeft className="w-4 h-4" /> Previous
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                disabled={page >= totalPages}
+                onClick={() => setPage(p => p + 1)}
+                className="border-white/[0.08] hover:bg-slate-800"
+              >
+                Next <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </GlassCard>
     </div>
   );
 }
+
+

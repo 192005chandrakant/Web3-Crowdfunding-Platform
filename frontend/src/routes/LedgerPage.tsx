@@ -1,66 +1,123 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Search, ExternalLink, Download, FileSpreadsheet, ArrowUpRight, ShieldAlert, AlertCircle, Eye
+  Search, ExternalLink, Download, FileSpreadsheet, ShieldAlert, AlertCircle, Eye
 } from 'lucide-react';
-import { GlassCard, Button, Badge, Skeleton, Avatar } from '@/components/ui';
+import { GlassCard, Button, Badge, Skeleton, Avatar, Alert } from '@/components/ui';
 import { useAccount } from 'wagmi';
+import { useAuth } from '@clerk/clerk-react';
 import { useQuery } from '@tanstack/react-query';
+import { formatUnits } from 'viem';
 import { api } from '@/lib/api';
+import type { PlatformLedgerItem } from '@/lib/api';
+
+function shortenAddress(value?: string) {
+  if (!value) return 'Unknown';
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function getTransferLabel(type: PlatformLedgerItem['type']) {
+  if (type === 'release') return 'Release';
+  if (type === 'refund') return 'Refund';
+  return 'Donation';
+}
+
+function getTypeBadgeVariant(type: PlatformLedgerItem['type']) {
+  if (type === 'release') return 'success' as const;
+  if (type === 'refund') return 'warning' as const;
+  return 'primary' as const;
+}
 
 export function LedgerPage() {
   const { address } = useAccount();
-  // admin check placeholder
-  const isAdmin = false; const { isSignedIn: siwe, getToken } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'donation' | 'refund' | 'release'>('all');
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    async function resolveRole() {
+      if (!isLoaded || !isSignedIn || !address) {
+        setIsAdmin(false);
+        return;
+      }
+
+      try {
+        const res = await api.getCurrentUser();
+        setIsAdmin(res.user?.role === 'admin' && res.user?.accountStatus === 'active');
+      } catch {
+        setIsAdmin(false);
+      }
+    }
+
+    resolveRole();
+  }, [isLoaded, isSignedIn, address]);
   
-  // As requested in the plan, for now we just show the user's donations.
-  // Aggregation of multiple endpoints or admin list will be stubbed for now 
-  // as the backend endpoint GET /api/admin/donations doesn't exist yet, 
-  // and we chose to hold off on backend modifications until confirmed by the user 
-  // (Option A vs B). If the user approved Option B (frontend only), this will be extended.
-  const { data: donationsData, isLoading } = useQuery({
-    queryKey: ['ledger', address],
-    queryFn: () => api.listDonationsByWallet(address!),
-    enabled: !!address && !isAdmin, // if admin, we'd fetch adminListAllDonations here
+  useEffect(() => {
+    setPage(1);
+  }, [filter, searchQuery]);
+  
+  const { data: donationsData, isLoading, error } = useQuery({
+    queryKey: ['platform-ledger', isSignedIn, page, searchQuery, filter],
+    queryFn: () => api.listPlatformLedger({
+      page,
+      limit: 100,
+      search: searchQuery.trim() || undefined,
+      type: filter === 'all' ? undefined : filter
+    }),
+    enabled: !!isSignedIn,
   });
 
-  const transactions = donationsData?.items ?? [];
+  const transactions = (donationsData?.items ?? []) as PlatformLedgerItem[];
+  const summary = donationsData?.summary ?? null;
+  const pagination = donationsData?.pagination;
   
   // Filter
   const filteredTransactions = transactions.filter(tx => {
-    const matchesFilter = filter === 'all' || tx.status === filter; // using status as proxy for type
+    const type = tx.type || 'donation';
+    const fromAddress = tx.fromAddress || tx.walletAddress;
+    const toAddress = tx.toAddress || tx.campaignAddress;
+    const matchesFilter = filter === 'all' || type === filter;
     const matchesSearch = searchQuery === '' || 
       tx.txHash.toLowerCase().includes(searchQuery.toLowerCase()) ||
       tx.campaignAddress.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      fromAddress.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      toAddress.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      type.toLowerCase().includes(searchQuery.toLowerCase()) ||
       tx.campaign?.title?.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesFilter && matchesSearch;
   });
 
   const handleExport = () => {
     if (!transactions.length) return;
-    const headers = ['Date,Type,From,To,Amount(MATIC),Campaign,TxHash,Status\n'];
+    const headers = ['Date,Type,From,To,Amount(POL),Campaign,TxHash,Status\n'];
     const rows = transactions.map(tx => 
-      `${new Date(tx.createdAt).toISOString()},Donation,${tx.walletAddress},${tx.campaignAddress},${tx.amount},"${tx.campaign?.title ?? 'Unknown'}",${tx.txHash},${tx.status}`
+      `${new Date(tx.createdAt).toISOString()},${getTransferLabel(tx.type)},${tx.fromAddress},${tx.toAddress},${tx.amount},"${tx.campaign?.title ?? 'Unknown'}",${tx.txHash},${tx.status}`
     );
     const blob = new Blob([headers.join('') + rows.join('\n')], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ledger-${isAdmin ? 'platform' : address?.slice(0,6)}.csv`;
+    a.download = `ledger-platform-${isAdmin ? 'admin' : address?.slice(0,6) ?? 'user'}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
 
-  if (!address) {
+  if (!isSignedIn) {
     return (
-      <div className="page-container flex min-h-[60vh] items-center justify-center">
-        <GlassCard className="p-8 max-w-md text-center">
+      <div className="page-container max-w-5xl space-y-6">
+        <GlassCard className="p-8 text-center">
           <AlertCircle className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
-          <h2 className="text-xl font-bold mb-2 text-slate-100">Wallet Not Connected</h2>
-          <p className="text-slate-400">Connect your wallet to view the ledger.</p>
+          <h2 className="text-2xl font-bold mb-2 text-slate-100">Sign in to view the Ledger</h2>
+          <p className="text-slate-400 max-w-2xl mx-auto">
+            Please sign in to view the immutable platform-wide transaction ledger.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <Button to="/sign-in">Sign In</Button>
+            <Button variant="outline" to="/explore">Browse campaigns</Button>
+          </div>
         </GlassCard>
       </div>
     );
@@ -75,9 +132,11 @@ export function LedgerPage() {
             <h1 className="text-3xl font-display font-bold text-slate-100">Transaction Ledger</h1>
             {isAdmin && <Badge variant="warning" className="flex items-center gap-1"><ShieldAlert className="w-3 h-3" /> Admin View</Badge>}
           </div>
-          <p className="text-slate-400">
-            {isAdmin ? "Platform-wide transaction history" : "Your complete transaction history"}
-          </p>
+          <div className="mb-6">
+            <Alert variant="info" title="Global Ledger">
+              This immutable on-chain ledger provides complete transparency into donations, refunds, and milestone fund releases recorded on the platform.
+            </Alert>
+          </div>
         </div>
         <Button
           variant="outline"
@@ -88,6 +147,35 @@ export function LedgerPage() {
           Export CSV
         </Button>
       </div>
+
+      {isAdmin && summary && (
+        <div className="grid gap-4 mb-6 md:grid-cols-4">
+          <GlassCard className="p-4">
+            <p className="text-xs uppercase tracking-wider text-slate-500">Total donations</p>
+            <p className="mt-2 text-2xl font-bold text-slate-100">{summary.totalDonations}</p>
+          </GlassCard>
+          <GlassCard className="p-4">
+            <p className="text-xs uppercase tracking-wider text-slate-500">Unique donors</p>
+            <p className="mt-2 text-2xl font-bold text-slate-100">{summary.uniqueDonorCount}</p>
+          </GlassCard>
+          <GlassCard className="p-4">
+            <p className="text-xs uppercase tracking-wider text-slate-500">Unique campaigns</p>
+            <p className="mt-2 text-2xl font-bold text-slate-100">{summary.uniqueCampaignCount}</p>
+          </GlassCard>
+          <GlassCard className="p-4">
+            <p className="text-xs uppercase tracking-wider text-slate-500">Total volume</p>
+            <p className="mt-2 text-2xl font-bold text-slate-100">
+              {formatUnits(BigInt(summary.totalAmountWei || "0"), 18)} POL
+            </p>
+          </GlassCard>
+        </div>
+      )}
+
+      {error && (
+        <Alert variant="danger" title="Ledger unavailable" className="mb-6">
+          {error.message}
+        </Alert>
+      )}
 
       <GlassCard className="p-6 overflow-hidden flex flex-col">
         {/* Controls */}
@@ -152,29 +240,34 @@ export function LedgerPage() {
                   </td>
                 </tr>
               ) : (
-                filteredTransactions.map(tx => (
-                  <tr key={tx._id} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
+                filteredTransactions.map(tx => {
+                  const type = tx.type || 'donation';
+                  const fromAddress = tx.fromAddress || tx.walletAddress;
+                  const toAddress = tx.toAddress || tx.campaignAddress;
+
+                  return (
+                  <tr key={`${type}-${tx._id}`} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
                     <td className="py-3 pr-4 whitespace-nowrap text-slate-400">
                       {new Date(tx.createdAt).toLocaleDateString()}
-                      <div className="text-xs text-slate-600">{new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                      <div className="text-xs text-slate-400">{new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                     </td>
                     <td className="py-3 px-4">
-                      <Badge variant="primary" className="bg-primary-500/10 text-primary-300 border-primary-500/20">Donation</Badge>
+                      <Badge variant={getTypeBadgeVariant(type)}>{getTransferLabel(type)}</Badge>
                     </td>
                     <td className="py-3 px-4 max-w-[200px]">
                       <div className="flex items-center gap-2 truncate">
-                        <Avatar address={tx.walletAddress} size="sm" />
-                        <span className="font-mono text-slate-300 truncate" title={tx.walletAddress}>
-                          {tx.walletAddress.slice(0, 6)}…{tx.walletAddress.slice(-4)}
+                        <Avatar fallback={fromAddress} size="sm" />
+                        <span className="font-mono text-slate-300 truncate" title={fromAddress}>
+                          {shortenAddress(fromAddress)}
                         </span>
                       </div>
                       <div className="text-xs text-slate-500 mt-1 pl-8 flex items-center gap-1">
-                        to <span className="font-mono">{tx.campaignAddress.slice(0, 6)}…</span>
+                        to <span className="font-mono" title={toAddress}>{shortenAddress(toAddress)}</span>
                       </div>
                     </td>
                     <td className="py-3 px-4 text-right whitespace-nowrap">
                       <div className="font-semibold text-slate-200">{tx.amount}</div>
-                      <div className="text-xs text-slate-500">MATIC</div>
+                      <div className="text-xs text-slate-500">POL</div>
                     </td>
                     <td className="py-3 px-4 max-w-[200px]">
                       <div className="text-slate-300 truncate font-medium" title={tx.campaign?.title}>
@@ -200,11 +293,38 @@ export function LedgerPage() {
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
+
+        {pagination && pagination.totalPages > 1 && (
+          <div className="mt-6 flex flex-col gap-3 border-t border-white/[0.08] pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-400">
+              Page {pagination.page} of {pagination.totalPages} · {pagination.total} records
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={pagination.page <= 1 || isLoading}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))}
+                disabled={pagination.page >= pagination.totalPages || isLoading}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </GlassCard>
     </div>
   );

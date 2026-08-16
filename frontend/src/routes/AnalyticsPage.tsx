@@ -10,23 +10,24 @@ import {
 } from 'lucide-react';
 import { GlassCard, Badge, Skeleton } from '@/components/ui';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@clerk/clerk-react';
 import { api } from '@/lib/api';
 
 type TimeRange = '7d' | '30d' | '90d' | 'all';
 
 export function AnalyticsPage() {
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
-  const { address } = useAccount(); const { isSignedIn: siwe, getToken } = useAuth();
+  const { isSignedIn } = useAuth();
 
   const { data: statsResponse, isLoading, isError } = useQuery({
     queryKey: ['platformStats'],
-    queryFn: () => api.getPlatformStats(siwe!),
-    enabled: !!siwe
+    queryFn: () => api.getPlatformStats(),
+    enabled: !!isSignedIn
   });
 
   const stats = statsResponse?.stats;
 
-  if (!siwe) {
+  if (!isSignedIn) {
     return (
       <div className="page-container flex min-h-[60vh] items-center justify-center">
         <GlassCard className="p-8 max-w-md text-center">
@@ -81,9 +82,9 @@ export function AnalyticsPage() {
       ) : isError || !stats ? (
         <GlassCard className="p-8 text-center">
           <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <h2 className="text-xl font-bold mb-2 text-slate-100">Access Denied</h2>
+          <h2 className="text-xl font-bold mb-2 text-slate-100">Loading Error</h2>
           <p className="text-slate-400">
-            Admin access is required to view platform analytics.
+            Failed to load platform analytics. Please try again.
           </p>
         </GlassCard>
       ) : (
@@ -282,3 +283,4 @@ export function AnalyticsPage() {
     </div>
   );
 }
+
