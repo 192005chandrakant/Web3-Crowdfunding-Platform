@@ -18,6 +18,35 @@ async function main() {
   await factory.deployed();
   console.log("CampaignFactory deployed to:", factory.address);
 
+  // If deploying to local Ganache, write the factory address into frontend/.env for developer convenience
+  try {
+    const fs = require("fs");
+    const path = require("path");
+    const frontendEnv = path.join(__dirname, "..", "..", "frontend", ".env");
+    let contents = "";
+    if (fs.existsSync(frontendEnv)) {
+      contents = fs.readFileSync(frontendEnv, "utf8");
+    }
+
+    const setOrReplace = (key, value) => {
+      const re = new RegExp(`^${key}=.*$`, "m");
+      if (re.test(contents)) {
+        contents = contents.replace(re, `${key}=${value}`);
+      } else {
+        contents += `\n${key}=${value}`;
+      }
+    };
+
+    setOrReplace("VITE_FACTORY_CONTRACT_ADDRESS", factory.address);
+    setOrReplace("VITE_TARGET_CHAIN_ID", network.chainId);
+    setOrReplace("VITE_GANACHE_RPC_URL", process.env.GANACHE_RPC_URL || "http://127.0.0.1:8545");
+
+    fs.writeFileSync(frontendEnv, contents, "utf8");
+    console.log(`Wrote frontend/.env with VITE_FACTORY_CONTRACT_ADDRESS=${factory.address}`);
+  } catch (err) {
+    console.warn("Failed to write frontend/.env:", err.message);
+  }
+
   if (network.chainId === 80002) {
     console.log("Verify Implementation on Amoy explorer: https://amoy.polygonscan.com/address/" + campaignImpl.address);
     console.log("Verify Factory on Amoy explorer: https://amoy.polygonscan.com/address/" + factory.address);

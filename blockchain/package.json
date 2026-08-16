@@ -6,7 +6,9 @@
     "compile": "hardhat compile",
     "test": "hardhat test --network ganache",
     "test:ganache": "hardhat test --network ganache",
+    "test:ganache-amoy": "hardhat test --network ganache_amoy_local",
     "deploy:ganache": "hardhat run scripts/deploy.js --network ganache",
+    "deploy:ganache-amoy": "hardhat run scripts/deploy.js --network ganache_amoy_local",
     "deploy:localhost": "hardhat run scripts/deploy.js --network localhost",
     "deploy:amoy": "hardhat run scripts/deploy.js --network polygon_amoy"
   },
