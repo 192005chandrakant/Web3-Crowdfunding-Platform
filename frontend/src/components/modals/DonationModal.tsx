@@ -4,7 +4,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button, GlassCard, ProgressBar } from '@/components/ui';
 import { useCampaignContractActions } from '@/hooks/useCampaignContract';
 import { parseEther, formatEther } from 'viem';
-import { useAccount, useBalance } from 'wagmi';
+import { useAccount, useBalance, usePublicClient } from 'wagmi';
+import { useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import { TARGET_CHAIN_ID } from '@/lib/chain';
 
 interface DonationModalProps {
   isOpen: boolean;
@@ -27,6 +30,8 @@ export const DonationModal: React.FC<DonationModalProps> = ({
 }) => {
   const { address } = useAccount();
   const { data: balance } = useBalance({ address });
+  const publicClient = usePublicClient({ chainId: TARGET_CHAIN_ID });
+  const queryClient = useQueryClient();
   const { contribute } = useCampaignContractActions(campaignAddress as `0x${string}`);
 
   const [step, setStep] = useState<DonationStep>('amount');
@@ -65,12 +70,42 @@ export const DonationModal: React.FC<DonationModalProps> = ({
 
     try {
       const resultHash = await contribute(amount);
+
+      // Wait for confirmation
+      if (publicClient) {
+        await publicClient.waitForTransactionReceipt({ hash: resultHash });
+      }
+
+      // Record donation in backend DB
+      if (address) {
+        await api.recordDonation({
+          walletAddress: address,
+          campaignAddress,
+          amount,
+          amountWei: parseEther(amount).toString(),
+          txHash: resultHash,
+          chainId: TARGET_CHAIN_ID
+        });
+
+        // Invalidate caches so UI updates
+        queryClient.invalidateQueries({ queryKey: ['donations', address] });
+        queryClient.invalidateQueries({ queryKey: ['donationStats', address] });
+        queryClient.invalidateQueries({ queryKey: ['campaign', campaignAddress] });
+        queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+        queryClient.invalidateQueries({ queryKey: ['campaignStats', campaignAddress] });
+      }
+
       setTxHash(resultHash);
       setStep('success');
     } catch (err: any) {
-      console.error('Donation error:', err);
-      setError(err.message || 'Transaction failed. Please try again.');
-      setStep('error');
+      // Handle transaction failure cleanly without console spam
+      const msg = err?.shortMessage ?? err?.message ?? 'Transaction failed. Please try again.';
+      if (!msg.toLowerCase().includes('user rejected')) {
+        setError(msg);
+        setStep('error');
+      } else {
+        setStep('amount'); // User cancelled — go back silently
+      }
     }
   };
 
@@ -142,8 +177,7 @@ export const DonationModal: React.FC<DonationModalProps> = ({
                     </span>
                   </div>
                   <ProgressBar 
-                    value={parseFloat(currentAmount)} 
-                    max={parseFloat(targetAmount)}
+                    value={Math.min(100, Math.round(((parseFloat(currentAmount) || 0) / (parseFloat(targetAmount) || 1)) * 100))}
                     variant="success"
                     className="mb-2"
                   />
@@ -155,7 +189,7 @@ export const DonationModal: React.FC<DonationModalProps> = ({
                 {/* Amount Selection */}
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-foreground mb-3">
-                    Select Amount (ETH)
+                    Select Amount (MATIC)
                   </label>
                   <div className="grid grid-cols-3 gap-2 mb-4">
                     {presetAmounts.map((preset) => (
@@ -188,7 +222,7 @@ export const DonationModal: React.FC<DonationModalProps> = ({
                                focus:outline-none focus:ring-2 focus:ring-primary/50"
                     />
                     <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground">
-                      ETH
+                      MATIC
                     </span>
                   </div>
                 </div>
@@ -198,7 +232,7 @@ export const DonationModal: React.FC<DonationModalProps> = ({
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Your Balance</span>
                     <span className="font-medium text-foreground">
-                      {userBalance.toFixed(4)} ETH
+                      {userBalance.toFixed(4)} MATIC
                     </span>
                   </div>
                 </div>
@@ -239,12 +273,12 @@ export const DonationModal: React.FC<DonationModalProps> = ({
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-muted-foreground">Donation Amount</span>
                       <span className="text-2xl font-bold text-foreground">
-                        {amount} ETH
+                        {amount} MATIC
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Est. Gas Fee</span>
-                      <span className="text-foreground">~0.0001 ETH</span>
+                      <span className="text-foreground">~0.001 MATIC</span>
                     </div>
                   </div>
 
@@ -308,17 +342,17 @@ export const DonationModal: React.FC<DonationModalProps> = ({
                   Thank You for Your Support!
                 </h3>
                 <p className="text-sm text-muted-foreground mb-6">
-                  Your donation of <strong className="text-foreground">{amount} ETH</strong> has been successfully processed.
+                  Your donation of <strong className="text-foreground">{amount} MATIC</strong> has been successfully processed.
                 </p>
 
                 {txHash && (
                   <a
-                    href={`https://polygonscan.com/tx/${txHash}`}
+                    href={`https://amoy.polygonscan.com/tx/${txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 text-sm text-blockchain hover:underline mb-6"
                   >
-                    View Transaction
+                    View on PolygonScan (Amoy)
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                     </svg>

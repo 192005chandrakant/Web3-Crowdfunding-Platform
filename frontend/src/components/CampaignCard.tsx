@@ -58,8 +58,9 @@ export function CampaignCard({ campaign, className, animate = true }: CampaignCa
       className={clsx(
         "group relative flex flex-col overflow-hidden",
         "rounded-2xl border border-white/[0.08] bg-slate-800/50",
-        "shadow-card transition-all duration-200",
-        "hover:border-white/[0.14] hover:shadow-lg",
+        "shadow-card transition-all duration-300",
+        "hover:border-white/[0.16] hover:shadow-xl hover:-translate-y-1",
+        campaign.isFeatured && "gradient-border",
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500/60",
         className
       )}
@@ -135,6 +136,7 @@ export function CampaignCard({ campaign, className, animate = true }: CampaignCa
             }
             size="sm"
             animated
+            glow={campaign.progress >= 100}
           />
 
           {/* Stats row */}
@@ -160,7 +162,7 @@ export function CampaignCard({ campaign, className, animate = true }: CampaignCa
                 {campaign.milestoneCount} milestones
               </span>
             )}
-            <span className="ml-auto text-slate-600">
+            <span className="ml-auto text-slate-500">
               Goal: {campaign.goal} {currency}
             </span>
           </div>

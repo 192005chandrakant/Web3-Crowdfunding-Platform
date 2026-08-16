@@ -167,7 +167,7 @@ function MilestoneItem({
           >
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-600">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                   Milestone {milestone.index + 1}
                 </span>
                 <StatusChip status={milestone.status} animated />
@@ -262,8 +262,8 @@ function MilestoneItem({
 
                 {/* TX Hash */}
                 {milestone.txHash && (
-                  <div className="rounded-lg bg-slate-900/60 px-3 py-2">
-                    <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-1">
+                  <div className="rounded-lg bg-slate-100/60 dark:bg-slate-900/60 px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-1">
                       Transaction
                     </p>
                     <code className="font-mono text-[11px] text-slate-400 break-all">

@@ -13,19 +13,6 @@ import {
 import { useCampaignList } from "@/hooks/useCampaigns";
 import { mapCampaignToCardData } from "@/lib/api";
 
-const FALLBACK_CAMPAIGNS: CampaignCardData[] = [
-  {
-    id: "solar-clinic",
-    title: "Solar-Powered Rural Clinic Network",
-    description: "Bringing sustainable healthcare to 12 villages in northern Kenya.",
-    creator: "Helix Health Foundation",
-    creatorType: "organization",
-    category: "Healthcare",
-    raised: "74,200", goal: "100,000", currency: "MATIC",
-    progress: 74, daysLeft: 18, donorCount: 342, milestoneCount: 4,
-    isVerified: true, isFeatured: true
-  }
-];
 
 const CATEGORIES = [
   "All", "general", "startup", "charity", "medical", "event"
@@ -61,9 +48,7 @@ export function ExplorePage() {
     if (data?.items?.length) {
       return data.items.map((campaign) => mapCampaignToCardData(campaign));
     }
-    if (!isLoading && isError) {
-      return FALLBACK_CAMPAIGNS;
-    }
+
     return [];
   }, [data, isLoading, isError]);
 
@@ -93,17 +78,21 @@ export function ExplorePage() {
 
   return (
     <div className="page-container">
-      <div>
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+      >
         <p className="section-label mb-1">Discover</p>
         <h1 className="font-display text-3xl font-bold text-slate-100">Explore Campaigns</h1>
         <p className="mt-1 text-sm text-slate-500">
           {data?.pagination.total ?? filtered.length} campaigns on MilestoneChain
         </p>
-      </div>
+      </motion.div>
 
       {isError && (
-        <Alert variant="warning" title="Backend offline">
-          Showing fallback data. Start the backend API at {import.meta.env.VITE_BACKEND_URL || "http://localhost:5000"}.
+        <Alert variant="warning" title="Campaign service unavailable">
+          Live campaigns could not be loaded. Check the backend API connection.
         </Alert>
       )}
 
@@ -116,7 +105,7 @@ export function ExplorePage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search campaigns…"
-              className="input-field pl-9"
+              className="input-field pl-9 input-glow"
               aria-label="Search campaigns"
             />
             {query && (
@@ -135,9 +124,9 @@ export function ExplorePage() {
             <button
               key={opt.value}
               onClick={() => setSort(opt.value)}
-              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition-all duration-200 ${
                 sort === opt.value
-                  ? "border-primary-500/50 bg-primary-500/15 text-primary-300"
+                  ? "border-primary-500/50 bg-primary-500/15 text-primary-300 shadow-[0_0_8px_rgba(99,102,241,0.15)]"
                   : "border-white/[0.08] bg-slate-800/40 text-slate-400 hover:border-white/[0.15] hover:text-slate-200"
               }`}
               aria-pressed={sort === opt.value}
@@ -157,7 +146,7 @@ export function ExplorePage() {
                     <button
                       key={cat}
                       onClick={() => setCategory(cat)}
-                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-all duration-200 ${
                         category === cat
                           ? "border-primary-500/50 bg-primary-500/15 text-primary-300"
                           : "border-white/[0.06] bg-slate-900/40 text-slate-400 hover:text-slate-200"

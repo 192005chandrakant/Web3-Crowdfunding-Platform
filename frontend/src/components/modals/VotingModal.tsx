@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, ThumbsUp, ThumbsDown, FileText, ExternalLink, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button, GlassCard } from '@/components/ui';
-import { useCampaignContract } from '@/hooks/useCampaignContract';
+import { useCampaignContractActions } from '@/hooks/useCampaignContract';
 
 interface Evidence {
   type: 'image' | 'document' | 'link';
@@ -39,7 +39,7 @@ export const VotingModal: React.FC<VotingModalProps> = ({
   votesAgainst,
   requiredVotes,
 }) => {
-  const { vote } = useCampaignContract(campaignAddress);
+  const { voteOnMilestone, isPending } = useCampaignContractActions(campaignAddress as `0x${string}`);
   const [step, setStep] = useState<VotingStep>('review');
   const [support, setSupport] = useState<boolean | null>(null);
   const [comment, setComment] = useState('');
@@ -50,8 +50,8 @@ export const VotingModal: React.FC<VotingModalProps> = ({
     if (support === null) return;
     setStep('processing');
     try {
-      const result = await vote({ milestoneIndex, support });
-      setTxHash(result.hash);
+      const result = await voteOnMilestone(milestoneIndex, support);
+      setTxHash(result);
       setStep('success');
     } catch (err: any) {
       setError(err.message || 'Transaction failed');

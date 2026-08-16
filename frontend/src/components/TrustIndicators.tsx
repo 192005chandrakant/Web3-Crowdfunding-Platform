@@ -42,7 +42,7 @@ const TRUST_ITEMS: TrustBadgeItem[] = [
     tooltip:
       "The campaign creator has completed identity verification. KYC documents have been reviewed and approved.",
     activeClasses:  "border-success-500/35 bg-success-500/10 text-success-400",
-    inactiveClasses: "border-slate-700/50 bg-slate-800/40 text-slate-600"
+    inactiveClasses: "border-slate-700/50 bg-slate-800/40 text-slate-400"
   },
   {
     key: "identityVerified",
@@ -51,7 +51,7 @@ const TRUST_ITEMS: TrustBadgeItem[] = [
     tooltip:
       "This account is linked to a World ID or Gitcoin Passport, confirming unique human or organization identity.",
     activeClasses:  "border-blockchain-500/35 bg-blockchain-500/10 text-blockchain-400",
-    inactiveClasses: "border-slate-700/50 bg-slate-800/40 text-slate-600"
+    inactiveClasses: "border-slate-700/50 bg-slate-800/40 text-slate-400"
   },
   {
     key: "contractAudited",
@@ -60,7 +60,7 @@ const TRUST_ITEMS: TrustBadgeItem[] = [
     tooltip:
       "The smart contract governing this campaign's escrow has been independently audited for security vulnerabilities.",
     activeClasses:  "border-primary-500/35 bg-primary-500/10 text-primary-400",
-    inactiveClasses: "border-slate-700/50 bg-slate-800/40 text-slate-600"
+    inactiveClasses: "border-slate-700/50 bg-slate-800/40 text-slate-400"
   },
   {
     key: "escrowActive",
@@ -69,7 +69,7 @@ const TRUST_ITEMS: TrustBadgeItem[] = [
     tooltip:
       "All donated funds are locked in a smart contract escrow. Funds can only be released when milestones are verified and approved by the community.",
     activeClasses:  "border-warning-500/35 bg-warning-500/10 text-warning-400",
-    inactiveClasses: "border-slate-700/50 bg-slate-800/40 text-slate-600"
+    inactiveClasses: "border-slate-700/50 bg-slate-800/40 text-slate-400"
   },
   {
     key: "communityTrusted",
@@ -78,7 +78,7 @@ const TRUST_ITEMS: TrustBadgeItem[] = [
     tooltip:
       "This campaign has received positive community ratings from verified donors based on transparency and communication.",
     activeClasses:  "border-secondary-500/35 bg-secondary-500/10 text-secondary-400",
-    inactiveClasses: "border-slate-700/50 bg-slate-800/40 text-slate-600"
+    inactiveClasses: "border-slate-700/50 bg-slate-800/40 text-slate-400"
   },
   {
     key: "onChainVerified",
@@ -87,7 +87,7 @@ const TRUST_ITEMS: TrustBadgeItem[] = [
     tooltip:
       "Campaign data, milestone states, and transactions are recorded on the blockchain and can be independently verified by anyone.",
     activeClasses:  "border-success-500/35 bg-success-500/10 text-success-300",
-    inactiveClasses: "border-slate-700/50 bg-slate-800/40 text-slate-600"
+    inactiveClasses: "border-slate-700/50 bg-slate-800/40 text-slate-400"
   }
 ];
 

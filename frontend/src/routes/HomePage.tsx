@@ -12,67 +12,16 @@ import {
   Coins,
   Scale,
   Activity,
-  HeartHandshake
+  HeartHandshake,
+  AlertTriangle
 } from "lucide-react";
 import { CampaignCard } from "@/components/CampaignCard";
 import type { CampaignCardData } from "@/components/CampaignCard";
 import { Button, Badge, CampaignCardSkeleton, Alert, GlassCard } from "@/components/ui";
 import { useCampaignList } from "@/hooks/useCampaigns";
 import { mapCampaignToCardData } from "@/lib/api";
+import { BrandLogo } from "@/components/BrandLogo";
 
-const FALLBACK_CAMPAIGNS: CampaignCardData[] = [
-  {
-    id: "solar-clinic",
-    title: "Solar-Powered Rural Clinic Network",
-    description: "Bringing sustainable healthcare to 12 villages in northern Kenya through solar-powered clinics.",
-    creator: "Helix Health Foundation",
-    creatorType: "organization",
-    category: "Healthcare",
-    raised: "74,200",
-    goal: "100,000",
-    currency: "MATIC",
-    progress: 74,
-    daysLeft: 18,
-    donorCount: 342,
-    milestoneCount: 4,
-    isVerified: true,
-    isFeatured: true
-  },
-  {
-    id: "open-source-ai",
-    title: "Open Source AI Ethics Lab",
-    description: "Developing transparent, bias-free AI models for educational institutions worldwide.",
-    creator: "0xOpenBrain",
-    creatorType: "human",
-    category: "Technology",
-    raised: "250,000",
-    goal: "500,000",
-    currency: "MATIC",
-    progress: 50,
-    daysLeft: 5,
-    donorCount: 1205,
-    milestoneCount: 8,
-    isVerified: true,
-    isFeatured: true
-  },
-  {
-    id: "ocean-cleanup",
-    title: "Autonomous Ocean Cleanup Drones",
-    description: "Deploying a fleet of solar-powered drones to map and collect microplastics in the Pacific.",
-    creator: "EcoRobotics",
-    creatorType: "organization",
-    category: "Environment",
-    raised: "45,000",
-    goal: "45,000",
-    currency: "MATIC",
-    progress: 100,
-    daysLeft: 0,
-    donorCount: 89,
-    milestoneCount: 3,
-    isVerified: true,
-    isFeatured: false
-  }
-];
 
 const staggerContainer = {
   hidden: { opacity: 0 },
@@ -94,9 +43,7 @@ export function HomePage() {
     if (data?.items?.length) {
       return data.items.slice(0, 3).map((campaign) => mapCampaignToCardData(campaign));
     }
-    if (!isLoading && isError) {
-      return FALLBACK_CAMPAIGNS;
-    }
+
     return [];
   }, [data, isLoading, isError]);
 
@@ -107,19 +54,27 @@ export function HomePage() {
       <section className="relative min-h-[90vh] flex items-center pt-24 pb-16 overflow-hidden">
         <div aria-hidden="true" className="absolute inset-0 bg-slate-950" />
         
-        {/* Animated Background Gradients */}
+        {/* Animated Background Orbs */}
         <motion.div 
           style={{ y: yHero }}
           className="absolute inset-0 overflow-hidden pointer-events-none"
         >
-          <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-primary-600/20 blur-[120px] mix-blend-screen" />
-          <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-secondary-600/20 blur-[120px] mix-blend-screen" />
-          <div className="absolute top-[20%] right-[20%] w-[30%] h-[30%] rounded-full bg-blue-500/10 blur-[100px] mix-blend-screen" />
+          <div 
+            className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-primary-600/20 blur-[120px] mix-blend-screen"
+            style={{ animation: "orb-float-1 12s ease-in-out infinite" }}
+          />
+          <div 
+            className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-secondary-600/20 blur-[120px] mix-blend-screen"
+            style={{ animation: "orb-float-2 15s ease-in-out infinite" }}
+          />
+          <div 
+            className="absolute top-[20%] right-[20%] w-[30%] h-[30%] rounded-full bg-blue-500/10 blur-[100px] mix-blend-screen animate-float-slow"
+          />
         </motion.div>
 
         {/* Grid pattern overlay */}
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay" />
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_70%,transparent_100%)] pointer-events-none" />
+        <div className="absolute inset-0 opacity-[0.07] pointer-events-none bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:24px_24px]" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.015)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.015)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_70%,transparent_100%)] pointer-events-none" />
 
         <div className="page-container relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-4xl mx-auto">
@@ -140,7 +95,7 @@ export function HomePage() {
               className="text-5xl sm:text-6xl lg:text-7xl font-display font-extrabold tracking-tight text-slate-100 mb-8 leading-[1.1]"
             >
               Fund the future with <br className="hidden sm:block" />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 via-secondary-400 to-primary-500">
+              <span className="text-gradient-animated">
                 absolute transparency
               </span>
             </motion.h1>
@@ -191,8 +146,8 @@ export function HomePage() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-8 lg:gap-12">
-            <GlassCard className="p-8 border-red-500/20 bg-red-500/[0.02] relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-10"><Alert className="w-24 h-24 text-red-500" /></div>
+            <GlassCard className="p-8 border-red-500/20 bg-red-500/[0.03] relative overflow-hidden" glowBorder>
+              <div className="absolute top-0 right-0 p-4 opacity-10"><AlertTriangle className="w-24 h-24 text-red-500" /></div>
               <h3 className="text-xl font-bold text-red-400 mb-6 flex items-center gap-2"><Shield className="w-5 h-5" /> The Old Way</h3>
               <ul className="space-y-4">
                 {[
@@ -209,7 +164,7 @@ export function HomePage() {
               </ul>
             </GlassCard>
 
-            <GlassCard className="p-8 border-emerald-500/20 bg-emerald-500/[0.02] relative overflow-hidden">
+            <GlassCard className="p-8 border-emerald-500/20 bg-emerald-500/[0.03] relative overflow-hidden" glowBorder>
               <div className="absolute top-0 right-0 p-4 opacity-10"><CheckCircle2 className="w-24 h-24 text-emerald-500" /></div>
               <h3 className="text-xl font-bold text-emerald-400 mb-6 flex items-center gap-2"><Zap className="w-5 h-5" /> The MilestoneChain Way</h3>
               <ul className="space-y-4">
@@ -280,7 +235,7 @@ export function HomePage() {
                   transition={{ delay: i * 0.15, duration: 0.5 }}
                   className="relative group"
                 >
-                  <GlassCard className="p-6 h-full hover:border-primary-500/40 transition-colors z-10 relative bg-slate-900/80">
+                  <GlassCard className="p-6 h-full hover:border-primary-500/40 transition-colors z-10 relative bg-slate-900/80" glowBorder>
                     <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-white/[0.08] flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-primary-600/20 transition-all shadow-lg">
                       <item.icon className="w-6 h-6 text-primary-400" />
                     </div>
@@ -309,8 +264,8 @@ export function HomePage() {
           </div>
 
           {isError && (
-            <Alert variant="warning" title="Backend offline" className="mb-8">
-              Showing sample campaigns. Connect to the backend to see live data.
+            <Alert variant="warning" title="Campaign service unavailable" className="mb-8">
+              Live featured campaigns could not be loaded. Check the backend API connection.
             </Alert>
           )}
 
@@ -363,9 +318,16 @@ export function HomePage() {
                   { title: "Polygon Network", desc: "Experience lightning-fast transactions with gas fees that cost fractions of a cent, making micro-donations viable.", icon: Zap },
                   { title: "IPFS Storage", desc: "All milestone evidence and campaign data is pinned to the InterPlanetary File System, ensuring it can never be censored or deleted.", icon: Database }
                 ].map((feature, i) => (
-                  <div key={i} className="flex gap-4">
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, x: -20 }}
+                    whileInView={{ opacity: 1, x: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: i * 0.15, duration: 0.4 }}
+                    className="flex gap-4 group"
+                  >
                     <div className="flex-shrink-0 mt-1">
-                      <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center border border-white/[0.08]">
+                      <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center border border-white/[0.08] group-hover:border-secondary-500/30 transition-colors">
                         <feature.icon className="w-5 h-5 text-secondary-400" />
                       </div>
                     </div>
@@ -373,7 +335,7 @@ export function HomePage() {
                       <h4 className="text-lg font-bold text-slate-200 mb-1">{feature.title}</h4>
                       <p className="text-slate-400 text-sm leading-relaxed">{feature.desc}</p>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </motion.div>
@@ -401,14 +363,14 @@ export function HomePage() {
                   <pre className="text-sm font-mono text-slate-300 overflow-x-auto custom-scrollbar">
                     <code className="language-solidity">
                       <span className="text-primary-400">function</span> releaseFunds(<span className="text-secondary-400">uint256</span> milestoneId) <span className="text-primary-400">external</span> {'{\n'}
-                      {'  '}Milestone <span className="text-primary-400">storage</span> m = milestones[milestoneId];{'\n'}
-                      {'  '}require(m.status == <span className="text-emerald-400">Status.Approved</span>, <span className="text-yellow-300">"Not approved"</span>);{'\n'}
+                      {'  '}Milestone <span className="text-primary-400">storage</span> m = milestones[milestoneId]{'\n'}
+                      {'  '}require(m.status == <span className="text-emerald-400">Status.Approved</span>, <span className="text-yellow-300">"Not approved"</span>){'\n'}
                       {'\n'}
-                      {'  '}m.isPaid = <span className="text-blue-400">true</span>;{'\n'}
+                      {'  '}m.isPaid = <span className="text-blue-400">true</span>{'\n'}
                       {'  '}<span className="text-slate-500">// Transfer exact milestone target to creator</span>{'\n'}
-                      {'  '}payable(creator).transfer(m.targetAmount);{'\n'}
+                      {'  '}payable(creator).transfer(m.targetAmount){'\n'}
                       {'\n'}
-                      {'  '}<span className="text-secondary-400">emit</span> FundsReleased(milestoneId, m.targetAmount);{'\n'}
+                      {'  '}<span className="text-secondary-400">emit</span> FundsReleased(milestoneId, m.targetAmount){'\n'}
                       {'}'}
                     </code>
                   </pre>
@@ -431,7 +393,7 @@ export function HomePage() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary-500 to-secondary-500 mx-auto flex items-center justify-center mb-8 shadow-[0_0_40px_rgba(var(--primary-500),0.3)] transform rotate-12">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary-500 to-secondary-500 mx-auto flex items-center justify-center mb-8 shadow-[0_0_40px_rgba(99,102,241,0.3)] transform rotate-12 animate-float">
               <HeartHandshake className="w-10 h-10 text-white -rotate-12" />
             </div>
             
@@ -454,20 +416,17 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* ─── FOOTER (SIMPLE) ───────────────────────────────────────────── */}
+      {/* ─── FOOTER ───────────────────────────────────────────────────── */}
       <footer className="border-t border-white/[0.04] bg-slate-950 py-12 mt-auto">
         <div className="page-container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-primary-500" />
-            <span className="font-bold text-slate-200">MilestoneChain</span>
-          </div>
+          <BrandLogo size="sm" to="/" showTagline={false} />
           <p className="text-sm text-slate-500">
             © {new Date().getFullYear()} MilestoneChain. All rights reserved. Built on Polygon.
           </p>
           <div className="flex gap-4">
-            <a href="#" className="text-sm text-slate-400 hover:text-white transition-colors">Terms</a>
-            <a href="#" className="text-sm text-slate-400 hover:text-white transition-colors">Privacy</a>
-            <a href="#" className="text-sm text-slate-400 hover:text-white transition-colors">Docs</a>
+            <a href="#" className="text-sm text-slate-400 hover:text-white transition-colors hover-underline">Terms</a>
+            <a href="#" className="text-sm text-slate-400 hover:text-white transition-colors hover-underline">Privacy</a>
+            <a href="#" className="text-sm text-slate-400 hover:text-white transition-colors hover-underline">Docs</a>
           </div>
         </div>
       </footer>
