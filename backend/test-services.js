@@ -4,6 +4,12 @@
  */
 
 require('dotenv').config();
+// Automatically trim leading/trailing whitespace from environment variables
+Object.keys(process.env).forEach(key => {
+  if (typeof process.env[key] === 'string') {
+    process.env[key] = process.env[key].trim();
+  }
+});
 const fs = require('fs');
 const path = require('path');
 
@@ -12,8 +18,12 @@ const { uploadImageBuffer } = require('./src/services/cloudinaryService');
 const { pinBuffer, pinJson } = require('./src/services/pinataService');
 const { sendNotificationEmail } = require('./src/services/emailService');
 const { getCached, setCached, invalidate } = require('./src/services/cacheService');
-const connectDB = require('./src/config/db');
+const { connectDatabase } = require('./src/config/db');
 const Campaign = require('./src/models/Campaign');
+const { notificationEngine } = require('./src/services/notifications/NotificationEngine');
+const inAppObserver = require('./src/services/notifications/observers/InAppObserver');
+const realtimeSSEObserver = require('./src/services/notifications/observers/RealtimeSSEObserver');
+const cacheAuditObserver = require('./src/services/notifications/observers/CacheAuditObserver');
 
 const COLORS = {
   reset: '\x1b[0m',
@@ -50,6 +60,7 @@ const results = {
   cloudinary: false,
   pinata: false,
   resend: false,
+  notificationEngine: false,
 };
 
 /**
@@ -58,8 +69,8 @@ const results = {
 async function testMongoDB() {
   info('Testing MongoDB connection...');
   try {
-    await connectDB();
-    
+    await connectDatabase(process.env.MONGODB_URI);
+
     // Try to count campaigns
     const count = await Campaign.countDocuments();
     success(`MongoDB connected! Found ${count} campaigns in database`);
@@ -79,11 +90,11 @@ async function testRedis() {
   try {
     const testKey = 'test:integration';
     const testValue = { message: 'Hello from MilestoneChain', timestamp: Date.now() };
-    
+
     // Set value
     await setCached(testKey, testValue, 60);
     success('Redis: Value set successfully');
-    
+
     // Get value
     const retrieved = await getCached(testKey);
     if (retrieved && retrieved.message === testValue.message) {
@@ -91,11 +102,11 @@ async function testRedis() {
     } else {
       throw new Error('Retrieved value does not match');
     }
-    
+
     // Invalidate
     await invalidate(testKey);
     success('Redis: Value invalidated successfully');
-    
+
     results.redis = true;
     return true;
   } catch (err) {
@@ -116,11 +127,11 @@ async function testCloudinary() {
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
       'base64'
     );
-    
+
     const result = await uploadImageBuffer(testImageBuffer, {
       folder: 'milestonechain/test'
     });
-    
+
     if (result.url && result.publicId) {
       success(`Cloudinary upload successful! URL: ${result.url.substring(0, 50)}...`);
       results.cloudinary = true;
@@ -149,24 +160,24 @@ async function testPinata() {
       description: 'Integration test for Pinata IPFS',
       timestamp: new Date().toISOString(),
     };
-    
+
     const result = await pinJson(testData, 'test-metadata.json');
-    
+
     if (result.cid) {
       success(`Pinata JSON pinned! CID: ${result.cid}`);
       info(`View at: https://gateway.pinata.cloud/ipfs/${result.cid}`);
-      
+
       // Test file pinning
       const testFileBuffer = Buffer.from('MilestoneChain Proof Test Document');
       const fileResult = await pinBuffer(testFileBuffer, 'test-proof.txt');
-      
+
       if (fileResult.cid) {
         success(`Pinata file pinned! CID: ${fileResult.cid}`);
         results.pinata = true;
         return true;
       }
     }
-    
+
     throw new Error('Pin did not return CID');
   } catch (err) {
     error(`Pinata test failed: ${err.message}`);
@@ -182,13 +193,13 @@ async function testPinata() {
  */
 async function testResend() {
   info('Testing Resend email service...');
-  
+
   if (!process.env.RESEND_API_KEY) {
     warn('RESEND_API_KEY not set - skipping email test');
     warn('Set RESEND_API_KEY in .env to test email notifications');
     return false;
   }
-  
+
   // Check if test email is provided
   const testEmail = process.env.TEST_EMAIL || process.env.RESEND_FROM_EMAIL;
   if (!testEmail) {
@@ -196,7 +207,7 @@ async function testResend() {
     warn('Set TEST_EMAIL=your@email.com in .env to receive test emails');
     return false;
   }
-  
+
   try {
     const result = await sendNotificationEmail({
       to: testEmail,
@@ -208,7 +219,7 @@ async function testResend() {
         <p>If you received this, Resend email integration is configured correctly.</p>
       `
     });
-    
+
     if (result.id || !result.skipped) {
       success(`Email sent successfully to ${testEmail}`);
       results.resend = true;
@@ -217,10 +228,47 @@ async function testResend() {
       warn('Email service not configured');
       return false;
     }
-    
+
     throw new Error('Email send did not return expected result');
   } catch (err) {
     error(`Resend test failed: ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Test 6: Notification Engine (Observer Design Pattern)
+ */
+async function testNotificationEngine() {
+  info('Testing Notification Engine (Observer Design Pattern)...');
+  try {
+    // Subscribe observers
+    notificationEngine.subscribe(inAppObserver)
+      .subscribe(realtimeSSEObserver)
+      .subscribe(cacheAuditObserver);
+
+    const status = notificationEngine.getStatus();
+    if (status.observerCount >= 3) {
+      success(`Notification Engine active with ${status.observerCount} registered observer channels!`);
+
+      // Dispatch a synthetic test event
+      const result = await notificationEngine.notify({
+        walletAddress: '0x000000000000000000000000000000000000dEaD',
+        type: 'campaign_update',
+        title: 'Observer Pattern Test Event',
+        message: 'Testing enterprise multi-channel notification dispatch.',
+        sendEmail: false
+      });
+
+      if (result.success) {
+        success('Notification dispatch broadcasted successfully across all observer channels!');
+        results.notificationEngine = true;
+        return true;
+      }
+    }
+    throw new Error('Observer check failed to dispatch');
+  } catch (err) {
+    error(`Notification Engine test failed: ${err.message}`);
     return false;
   }
 }
@@ -232,31 +280,32 @@ function printReport() {
   console.log('\n' + '='.repeat(60));
   console.log('  INTEGRATION TEST RESULTS');
   console.log('='.repeat(60));
-  
+
   const services = [
     { name: 'MongoDB Atlas', key: 'mongodb', critical: true },
     { name: 'Upstash Redis', key: 'redis', critical: false },
     { name: 'Cloudinary', key: 'cloudinary', critical: true },
     { name: 'Pinata IPFS', key: 'pinata', critical: true },
     { name: 'Resend Email', key: 'resend', critical: false },
+    { name: 'Observer Notifications', key: 'notificationEngine', critical: true },
   ];
-  
+
   services.forEach(({ name, key, critical }) => {
     const status = results[key];
     const symbol = status ? '✓' : '✗';
     const color = status ? COLORS.green : (critical ? COLORS.red : COLORS.yellow);
     const label = critical ? '(Critical)' : '(Optional)';
-    
+
     console.log(`${color}${symbol}${COLORS.reset} ${name.padEnd(20)} ${label.padEnd(12)} ${status ? 'PASS' : 'FAIL'}`);
   });
-  
+
   console.log('='.repeat(60));
-  
+
   const passedCount = Object.values(results).filter(Boolean).length;
   const totalCount = Object.keys(results).length;
   const criticalServices = services.filter(s => s.critical);
   const criticalPassed = criticalServices.filter(s => results[s.key]).length;
-  
+
   if (criticalPassed === criticalServices.length) {
     success(`\nAll critical services operational (${passedCount}/${totalCount} total)`);
     info('\nYour backend is ready to use! 🚀');
@@ -264,7 +313,7 @@ function printReport() {
     error(`\nSome critical services failed (${passedCount}/${totalCount} passed)`);
     warn('\nPlease fix the failed services before deploying.');
   }
-  
+
   console.log('\n' + '='.repeat(60) + '\n');
 }
 
@@ -275,13 +324,14 @@ async function runTests() {
   console.log('\n' + '='.repeat(60));
   console.log('  MILESTONECHAIN BACKEND INTEGRATION TESTS');
   console.log('='.repeat(60) + '\n');
-  
+
   try {
     await testMongoDB();
     await testRedis();
     await testCloudinary();
     await testPinata();
     await testResend();
+    await testNotificationEngine();
   } catch (err) {
     error(`Unexpected error: ${err.message}`);
   } finally {
@@ -295,3 +345,4 @@ runTests().catch(err => {
   error(`Fatal error: ${err.message}`);
   process.exit(1);
 });
+

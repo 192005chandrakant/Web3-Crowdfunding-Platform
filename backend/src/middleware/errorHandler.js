@@ -1,5 +1,13 @@
 function errorHandler(error, _req, res, _next) {
-  const statusCode = error.statusCode || 500;
+  let statusCode = error.statusCode || 500;
+  let message = error.message || "Internal Server Error";
+
+  if (error.name === "MulterError") {
+    statusCode = 400;
+    if (error.code === "LIMIT_FILE_SIZE") {
+      message = "Image exceeds 5 MB limit";
+    }
+  }
 
   if (statusCode >= 500) {
     console.error("[backend]", error);
@@ -7,7 +15,7 @@ function errorHandler(error, _req, res, _next) {
 
   res.status(statusCode).json({
     success: false,
-    message: error.message || "Internal Server Error",
+    message,
     details: error.details || null
   });
 }

@@ -8,7 +8,12 @@
     "dev:frontend": "cd frontend && npm run dev",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build": "cd frontend && npm run build",
-    "start": "npm run dev"
+    "start": "npm run dev",
+    "typecheck": "cd frontend && npm run typecheck",
+    "test:frontend": "cd frontend && npm run build",
+    "test:backend": "cd backend && npm run smoke",
+    "test:blockchain": "cd blockchain && npx hardhat test",
+    "test:all": "npm run test:frontend && npm run test:backend && npm run test:blockchain"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
