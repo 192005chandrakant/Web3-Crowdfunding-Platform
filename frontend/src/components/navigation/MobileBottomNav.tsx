@@ -23,7 +23,7 @@ export function MobileBottomNav() {
         "fixed bottom-0 left-0 right-0 z-50",
         "flex items-stretch lg:hidden",
         "border-t border-white/[0.08] bg-slate-900/95 backdrop-blur-xl",
-        "safe-area-pb" // handles iOS safe area
+        "safe-area-pb"
       )}
       aria-label="Mobile navigation"
     >
@@ -34,8 +34,8 @@ export function MobileBottomNav() {
           end={item.href === "/"}
           className={({ isActive }) =>
             clsx(
-              "flex flex-1 flex-col items-center justify-center gap-1 px-1 py-3",
-              "text-[10px] font-medium transition-colors duration-150",
+              "flex flex-1 flex-col items-center justify-center gap-1 px-1 py-3 relative",
+              "text-[10px] font-medium transition-colors duration-200",
               isActive
                 ? "text-primary-400"
                 : "text-slate-500 hover:text-slate-300"
@@ -47,15 +47,15 @@ export function MobileBottomNav() {
             <>
               <item.icon
                 className={clsx(
-                  "h-5 w-5 transition-colors",
-                  isActive ? "text-primary-400" : "text-current"
+                  "h-5 w-5 transition-all duration-200",
+                  isActive ? "text-primary-400 scale-110" : "text-current"
                 )}
                 aria-hidden="true"
               />
               <span>{item.label}</span>
               {isActive && (
                 <span
-                  className="absolute bottom-0 h-0.5 w-8 rounded-t-full bg-primary-400"
+                  className="absolute top-0 left-1/2 -translate-x-1/2 h-[2px] w-8 rounded-b-full bg-gradient-to-r from-primary-400 to-secondary-400"
                   aria-hidden="true"
                 />
               )}

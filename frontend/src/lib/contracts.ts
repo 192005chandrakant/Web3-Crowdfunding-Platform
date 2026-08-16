@@ -37,32 +37,64 @@ export const CAMPAIGN_FACTORY_ABI = [
 
 // ─── Campaign contract ABI (minimal) ─────────────────────────────────────
 export const CAMPAIGN_ABI = [
-  // Read
+  // Read: public state getters on Campaign.sol
   {
     type: "function",
-    name: "getState",
+    name: "totalFundsRaised",
     stateMutability: "view",
     inputs: [],
-    outputs: [
-      { name: "totalFunds",     type: "uint256" },
-      { name: "goal",           type: "uint256" },
-      { name: "currentMilestone", type: "uint256" },
-      { name: "isActive",       type: "bool" }
-    ]
+    outputs: [{ name: "", type: "uint256" }]
   },
   {
     type: "function",
-    name: "getMilestone",
+    name: "totalFundsRemaining",
     stateMutability: "view",
-    inputs: [{ name: "index", type: "uint256" }],
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }]
+  },
+  {
+    type: "function",
+    name: "fundraisingGoal",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }]
+  },
+  {
+    type: "function",
+    name: "state",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }]
+  },
+  {
+    type: "function",
+    name: "creator",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }]
+  },
+  {
+    type: "function",
+    name: "contributions",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }]
+  },
+  {
+    type: "function",
+    name: "milestones",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "uint256" }],
     outputs: [
-      { name: "title",          type: "string" },
-      { name: "targetAmount",   type: "uint256" },
-      { name: "deadline",       type: "uint256" },
-      { name: "isPaid",         type: "bool" },
-      { name: "approvalVotes",  type: "uint256" },
-      { name: "rejectionVotes", type: "uint256" },
-      { name: "ipfsProofHash",  type: "string" }
+      { name: "targetAmount", type: "uint256" },
+      { name: "deadline", type: "uint256" },
+      { name: "approvalQVWeight", type: "uint256" },
+      { name: "rejectionQVWeight", type: "uint256" },
+      { name: "snapshotTotalQVWeight", type: "uint256" },
+      { name: "isCurrent", type: "bool" },
+      { name: "isPaid", type: "bool" },
+      { name: "title", type: "string" },
+      { name: "ipfsProofHash", type: "string" }
     ]
   },
   {
@@ -100,22 +132,77 @@ export const CAMPAIGN_ABI = [
     ],
     outputs: []
   },
-  // Events
+  {
+    type: "function",
+    name: "executeTranche",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "milestoneIndex", type: "uint256" }],
+    outputs: []
+  },
+  // Events (QV-updated — includes qvWeight and rawContribution)
   {
     type: "event",
-    name: "Contributed",
+    name: "ContributionReceived",
     inputs: [
-      { name: "donor",  type: "address", indexed: true },
-      { name: "amount", type: "uint256", indexed: false }
+      { name: "contributor", type: "address", indexed: true },
+      { name: "amount",      type: "uint256", indexed: false },
+      { name: "qvPower",     type: "uint256", indexed: false }
     ]
   },
   {
     type: "event",
     name: "MilestoneVoted",
     inputs: [
-      { name: "voter",   type: "address", indexed: true },
-      { name: "index",   type: "uint256", indexed: false },
-      { name: "support", type: "bool",    indexed: false }
+      { name: "milestoneIndex",    type: "uint256", indexed: true  },
+      { name: "voter",             type: "address", indexed: true  },
+      { name: "support",           type: "bool",    indexed: false },
+      { name: "qvWeight",          type: "uint256", indexed: false }, // sqrt(contribution)
+      { name: "rawContribution",   type: "uint256", indexed: false }  // raw wei amount
+    ]
+  },
+  {
+    type: "event",
+    name: "TrancheExecuted",
+    inputs: [
+      { name: "milestoneIndex", type: "uint256", indexed: true },
+      { name: "recipient",       type: "address", indexed: true },
+      { name: "amount",          type: "uint256", indexed: false }
+    ]
+  },
+  // QV View helpers
+  {
+    type: "function",
+    name: "getQVPower",
+    stateMutability: "view",
+    inputs: [{ name: "contributor", type: "address" }],
+    outputs: [
+      { name: "qvPower",    type: "uint256" },
+      { name: "isEligible", type: "bool"    }
+    ]
+  },
+  {
+    type: "function",
+    name: "getMilestoneQVState",
+    stateMutability: "view",
+    inputs: [{ name: "index", type: "uint256" }],
+    outputs: [
+      { name: "approvalQVWeight",      type: "uint256" },
+      { name: "rejectionQVWeight",     type: "uint256" },
+      { name: "snapshotTotalQVWeight", type: "uint256" },
+      { name: "approved",              type: "bool"    }
+    ]
+  },
+  {
+    type: "function",
+    name: "getVoterStatus",
+    stateMutability: "view",
+    inputs: [
+      { name: "milestoneIndex", type: "uint256" },
+      { name: "voter",          type: "address"  }
+    ],
+    outputs: [
+      { name: "voted",        type: "bool" },
+      { name: "votedApprove", type: "bool" }
     ]
   }
 ] as const;

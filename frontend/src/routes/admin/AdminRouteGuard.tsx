@@ -1,35 +1,20 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import { useAuth } from '@clerk/clerk-react';
-import { api } from '@/lib/api';
-import toast from 'react-hot-toast';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { Loader2 } from 'lucide-react';
+
+const ADMIN_WALLETS = (import.meta.env.VITE_ADMIN_WALLET_ADDRESSES || '')
+  .split(',')
+  .map((address: string) => address.trim().toLowerCase())
+  .filter(Boolean);
 
 export function AdminRouteGuard() {
   const { address } = useAccount();
-  const { isSignedIn, isLoaded } = useAuth();
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    async function checkRole() {
-      if (!isLoaded) return;
-      if (!address || !isSignedIn) {
-        setIsLoading(false);
-        return;
-      }
-      try {
-        const res = await api.getUser(address);
-        setUserRole(res.user?.role || null);
-      } catch (e) {
-        console.error('Failed to fetch user role:', e);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    checkRole();
-  }, [address, isSignedIn, isLoaded]);
+  const { isLoaded, isSignedIn } = useAuth();
+  const { role: userRole, isLoading } = useCurrentUser();
+  const isAllowlistedAdmin = !!address && ADMIN_WALLETS.includes(address.toLowerCase());
 
   if (!isLoaded || isLoading) {
     return (
@@ -41,13 +26,11 @@ export function AdminRouteGuard() {
   }
 
   if (!address || !isSignedIn) {
-    toast.error('Connect your wallet and sign in to access admin pages.');
-    return <Navigate to="/" replace />;
+    return <Navigate to="/admin/login" replace />;
   }
 
-  if (userRole !== 'admin') {
-    toast.error('Admin access required.');
-    return <Navigate to="/" replace />;
+  if (!isAllowlistedAdmin && userRole !== 'admin') {
+    return <Navigate to="/admin/login" replace />;
   }
 
   return <Outlet />;
