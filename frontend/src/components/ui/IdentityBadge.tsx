@@ -19,7 +19,7 @@ const config: Record<
     icon: Building2,
     label: "Verified Org",
     classes:
-      "border-warning-500/30 bg-warning-500/10 text-warning-400",
+      "border-warning-500/40 dark:border-warning-500/30 bg-warning-500/10 text-warning-400",
     tooltip:
       "This organization has been verified by MilestoneChain. Identity documents and legal registration have been reviewed."
   },

@@ -7,7 +7,10 @@ import {
   XCircle,
   ArrowUpCircle,
   Star,
-  Clock
+  Clock,
+  Zap,
+  AlertTriangle,
+  PauseCircle
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -19,7 +22,16 @@ export type MilestoneStatus =
   | "approved"
   | "rejected"
   | "funds-released"
-  | "completed";
+  | "completed"
+  | "active"
+  | "confirmed"
+  | "pending"
+  | "paused"
+  | "draft"
+  | "suspended"
+  | "cancelled"
+  | "failed"
+  | string;
 
 interface StatusConfig {
   label: string;
@@ -27,7 +39,7 @@ interface StatusConfig {
   classes: string;
 }
 
-const STATUS_CONFIG: Record<MilestoneStatus, StatusConfig> = {
+const STATUS_CONFIG: Record<string, StatusConfig> = {
   "locked": {
     label: "Locked",
     icon: Lock,
@@ -67,6 +79,47 @@ const STATUS_CONFIG: Record<MilestoneStatus, StatusConfig> = {
     label: "Completed",
     icon: Star,
     classes: "bg-success-600/20 text-success-300 border-success-500/30"
+  },
+  // Campaign & Donation extended statuses
+  "active": {
+    label: "Active Vault",
+    icon: Zap,
+    classes: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+  },
+  "confirmed": {
+    label: "Confirmed",
+    icon: CheckCircle2,
+    classes: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25"
+  },
+  "pending": {
+    label: "Pending",
+    icon: Clock,
+    classes: "bg-amber-500/15 text-amber-400 border-amber-500/25 animate-pulse"
+  },
+  "paused": {
+    label: "Paused",
+    icon: PauseCircle,
+    classes: "bg-slate-700/60 text-slate-300 border-slate-500/40"
+  },
+  "draft": {
+    label: "Draft",
+    icon: Lock,
+    classes: "bg-slate-800 text-slate-400 border-slate-700/60"
+  },
+  "suspended": {
+    label: "Suspended",
+    icon: AlertTriangle,
+    classes: "bg-rose-500/20 text-rose-400 border-rose-500/30"
+  },
+  "cancelled": {
+    label: "Cancelled",
+    icon: XCircle,
+    classes: "bg-rose-500/15 text-rose-400 border-rose-500/25"
+  },
+  "failed": {
+    label: "Failed",
+    icon: XCircle,
+    classes: "bg-rose-600/20 text-rose-400 border-rose-500/30"
   }
 };
 
@@ -78,14 +131,19 @@ interface StatusChipProps {
 }
 
 export function StatusChip({ status, className, animated = false }: StatusChipProps) {
-  const config = STATUS_CONFIG[status];
-  const Icon = config.icon;
-  const isActive = status === "in-progress" || status === "voting";
+  const normalizedStatus = typeof status === "string" ? status.toLowerCase() : "active";
+  const config: StatusConfig = STATUS_CONFIG[normalizedStatus] || {
+    label: status ? String(status).charAt(0).toUpperCase() + String(status).slice(1).replace(/-/g, " ") : "Active",
+    icon: CheckCircle2,
+    classes: "bg-primary-500/15 text-primary-300 border-primary-500/25"
+  };
+  const Icon = config.icon || CheckCircle2;
+  const isActive = normalizedStatus === "in-progress" || normalizedStatus === "voting" || normalizedStatus === "active";
 
   return (
     <span
       className={clsx(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold",
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold whitespace-nowrap transition-colors",
         config.classes,
         className
       )}
@@ -100,7 +158,8 @@ export function StatusChip({ status, className, animated = false }: StatusChipPr
       ) : (
         <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
       )}
-      {config.label}
+      <span>{config.label}</span>
     </span>
   );
 }
+

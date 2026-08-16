@@ -31,3 +31,6 @@ export {
 } from "./Skeleton";
 
 export { EmptyState } from "./EmptyState";
+
+export { BrandLogo } from "../BrandLogo";
+

@@ -4,8 +4,6 @@ interface SkeletonProps {
   className?: string;
   /** Override shape to circle (for avatars) */
   circle?: boolean;
-  /** Number of lines to render (stacked) */
-  lines?: number;
 }
 
 /** Single skeleton block */

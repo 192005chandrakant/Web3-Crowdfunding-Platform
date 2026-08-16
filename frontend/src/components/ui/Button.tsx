@@ -144,15 +144,22 @@ export function Button({
   // Render as React Router Link when `to` is provided
   if (to) {
     return (
-      <Link to={to} className={resolvedClass} aria-disabled={isDisabled}>
-        <ButtonContent
-          isLoading={isLoading}
-          leadingIcon={leadingIcon}
-          trailingIcon={trailingIcon}
-        >
-          {children}
-        </ButtonContent>
-      </Link>
+      <motion.div
+        whileTap={{ scale: isDisabled ? 1 : 0.97 }}
+        whileHover={{ y: isDisabled || variant === "link" ? 0 : -1 }}
+        transition={{ duration: 0.15 }}
+        className={fullWidth ? "block w-full" : "inline-block"}
+      >
+        <Link to={to} className={resolvedClass} aria-disabled={isDisabled}>
+          <ButtonContent
+            isLoading={isLoading}
+            leadingIcon={leadingIcon}
+            trailingIcon={trailingIcon}
+          >
+            {children}
+          </ButtonContent>
+        </Link>
+      </motion.div>
     );
   }
 

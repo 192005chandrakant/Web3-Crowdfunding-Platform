@@ -12,6 +12,8 @@ interface ProgressBarProps {
   size?: "sm" | "md" | "lg";
   className?: string;
   animated?: boolean;
+  /** Show glow effect on the filled bar */
+  glow?: boolean;
 }
 
 const variantStyles: Record<ProgressVariant, string> = {
@@ -20,6 +22,14 @@ const variantStyles: Record<ProgressVariant, string> = {
   warning:    "from-warning-500 to-warning-400",
   danger:     "from-danger-500 to-danger-400",
   blockchain: "from-blockchain-500 to-primary-500"
+};
+
+const glowColors: Record<ProgressVariant, string> = {
+  primary:    "shadow-[0_0_8px_rgba(99,102,241,0.4)]",
+  success:    "shadow-[0_0_8px_rgba(16,185,129,0.4)]",
+  warning:    "shadow-[0_0_8px_rgba(245,158,11,0.4)]",
+  danger:     "shadow-[0_0_8px_rgba(244,63,94,0.4)]",
+  blockchain: "shadow-[0_0_8px_rgba(59,130,246,0.4)]"
 };
 
 const sizeStyles = {
@@ -35,7 +45,8 @@ export function ProgressBar({
   variant = "primary",
   size = "md",
   className,
-  animated = true
+  animated = true,
+  glow = false
 }: ProgressBarProps) {
   const clampedValue = Math.min(100, Math.max(0, value));
   const prefersReducedMotion = useReducedMotion();
@@ -76,7 +87,8 @@ export function ProgressBar({
           }
           className={clsx(
             "h-full rounded-full bg-gradient-to-r",
-            variantStyles[variant]
+            variantStyles[variant],
+            glow && glowColors[variant]
           )}
         />
       </div>

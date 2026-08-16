@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { motion } from "framer-motion";
 import clsx from "clsx";
 import { Inbox } from "lucide-react";
 
@@ -21,7 +22,10 @@ export function EmptyState({
   compact = false
 }: EmptyStateProps) {
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
       className={clsx(
         "flex flex-col items-center justify-center text-center",
         compact ? "py-8 px-4" : "py-16 px-6",
@@ -31,7 +35,9 @@ export function EmptyState({
       aria-label={title}
     >
       {/* Icon */}
-      <div
+      <motion.div
+        animate={{ y: [0, -6, 0] }}
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
         className={clsx(
           "mb-4 rounded-full border border-white/[0.08] bg-slate-800/60 flex items-center justify-center",
           compact ? "h-12 w-12" : "h-16 w-16"
@@ -46,7 +52,7 @@ export function EmptyState({
             )}
           />
         )}
-      </div>
+      </motion.div>
 
       {/* Text */}
       <h3
@@ -70,6 +76,6 @@ export function EmptyState({
 
       {/* Action */}
       {action && <div className="mt-5">{action}</div>}
-    </div>
+    </motion.div>
   );
 }

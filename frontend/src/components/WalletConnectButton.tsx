@@ -43,7 +43,7 @@ export function WalletConnectButton() {
     try {
       const res = await signIn.authenticateWithWeb3({
         identifier: address,
-      });
+      } as any);
       if (res.status === 'complete' && setActive) {
         await setActive({ session: res.createdSessionId });
         setIsOpen(false);
@@ -70,11 +70,11 @@ export function WalletConnectButton() {
           variant={isAuthenticated ? "outline" : "secondary"} 
           size="sm" 
           onClick={() => setIsOpen(!isOpen)}
-          className="gap-2 bg-slate-900/50 backdrop-blur-md border-white/[0.08]"
+          className="gap-2 bg-slate-900/50 backdrop-blur-md border-white/[0.08] max-w-[calc(100vw-6.5rem)] sm:max-w-none"
         >
           <Wallet className={`w-4 h-4 ${isAuthenticated ? 'text-primary-400' : 'text-slate-400'}`} />
           <span>{address.slice(0, 6)}…{address.slice(-4)}</span>
-          {!isAuthenticated && <span className="hidden sm:inline ml-1 text-xs font-normal opacity-80">(Not signed in)</span>}
+          {!isAuthenticated && <span className="hidden md:inline ml-1 text-xs font-normal opacity-80">(Not signed in)</span>}
           <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </Button>
 
@@ -119,9 +119,10 @@ export function WalletConnectButton() {
         leadingIcon={isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wallet className="w-4 h-4" />}
         onClick={() => setIsOpen(!isOpen)}
         disabled={isPending}
-        className="shadow-glow-primary"
+        className="shadow-glow-primary max-w-[calc(100vw-6.5rem)] sm:max-w-none"
       >
-        {isPending ? 'Connecting…' : 'Connect Wallet'}
+        <span className="sm:hidden">{isPending ? 'Connecting…' : 'Wallet'}</span>
+        <span className="hidden sm:inline">{isPending ? 'Connecting…' : 'Connect Wallet'}</span>
       </Button>
 
       {isOpen && !isPending && connectors.length > 0 && (

@@ -1,5 +1,4 @@
 import { useAccount, useChainId, useConnect, useDisconnect, useSignMessage } from "wagmi";
-import { polygon, polygonAmoy } from "wagmi/chains";
 import {
   Wallet,
   Link2,
@@ -11,6 +10,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { Button, Alert, Badge } from "@/components/ui";
+import { TARGET_CHAIN_ID, getAddressUrl, getChainLabel } from "@/lib/chain";
 
 
 // ─── Connection state helpers ──────────────────────────────────────────────
@@ -27,15 +27,11 @@ function shortenAddress(address: string): string {
 }
 
 function getNetworkName(chainId: number | undefined): string {
-  switch (chainId) {
-    case polygon.id:      return "Polygon Mainnet";
-    case polygonAmoy.id:  return "Polygon Amoy";
-    default:              return chainId ? `Chain ${chainId}` : "Unknown";
-  }
+  return chainId ? getChainLabel(chainId) : "Unknown";
 }
 
 function isSupported(chainId: number | undefined): boolean {
-  return chainId === polygon.id || chainId === polygonAmoy.id;
+  return chainId === TARGET_CHAIN_ID;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────
@@ -54,8 +50,38 @@ export function WalletConnector({ onAuthenticated, className }: WalletConnectorP
   const { connectors, connectAsync, isPending }  = useConnect();
   const { disconnect }                  = useDisconnect();
   const { signMessageAsync, isPending: isSigning } = useSignMessage();
-  
-  
+
+  async function handleSwitchNetwork() {
+    const provider = (window as any).ethereum;
+    if (!provider) {
+      alert("No wallet provider found. Please install MetaMask or another Ethereum wallet.");
+      return;
+    }
+
+    const targetChainHex = `0x${TARGET_CHAIN_ID.toString(16)}`;
+
+    try {
+      await provider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: targetChainHex }]
+      });
+    } catch (error: any) {
+      if (error?.code === 4902) {
+        await provider.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: targetChainHex,
+            chainName: "Local Ganache",
+            nativeCurrency: { name: "MATIC", symbol: "MATIC", decimals: 18 },
+            rpcUrls: ["http://127.0.0.1:8545"],
+            blockExplorerUrls: []
+          }]
+        });
+      } else {
+        throw error;
+      }
+    }
+  }
 
   // Derive current status
   const status: WalletStatus = (() => {
@@ -81,7 +107,7 @@ export function WalletConnector({ onAuthenticated, className }: WalletConnectorP
       "",
       `URI: ${uri}`,
       "Version: 1",
-      `Chain ID: ${chainId ?? polygonAmoy.id}`,
+      `Chain ID: ${chainId ?? TARGET_CHAIN_ID}`,
       `Nonce: ${nonce}`,
       `Issued At: ${new Date().toISOString()}`
     ].join("\n");
@@ -125,11 +151,11 @@ export function WalletConnector({ onAuthenticated, className }: WalletConnectorP
         <div className="rounded-xl border border-white/[0.06] bg-slate-900/50 px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-1">Connected Account</p>
+              <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-1">Connected Account</p>
               <code className="font-mono text-sm text-slate-300">{shortenAddress(address)}</code>
             </div>
             <div className="text-right">
-              <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-1">Network</p>
+              <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-1">Network</p>
               <div className="flex items-center gap-1.5">
                 <span
                   className={clsx(
@@ -148,7 +174,12 @@ export function WalletConnector({ onAuthenticated, className }: WalletConnectorP
       {/* Wrong network warning */}
       {status === "wrong-network" && (
         <Alert variant="warning" title="Wrong network">
-          Please switch to Polygon or Polygon Amoy in your wallet to use MilestoneChain.
+          <div className="space-y-3">
+            <p>Please switch to {getChainLabel(TARGET_CHAIN_ID)} in your wallet to use MilestoneChain.</p>
+            <Button variant="secondary" size="sm" onClick={handleSwitchNetwork}>
+              Switch to Local Ganache
+            </Button>
+          </div>
         </Alert>
       )}
 
@@ -157,17 +188,27 @@ export function WalletConnector({ onAuthenticated, className }: WalletConnectorP
         {!isConnected ? (
           // Show all available connectors
           connectors.map((connector) => (
-            <Button
-              key={connector.uid}
-              variant="blockchain"
-              size="sm"
-              isLoading={isPending}
-              leadingIcon={<Link2 className="h-4 w-4" />}
-              onClick={() => connectAsync({ connector })}
-            >
-              Connect {connector.name}
-            </Button>
-          ))
+              <Button
+                key={connector.uid}
+                variant="blockchain"
+                size="sm"
+                isLoading={isPending}
+                leadingIcon={<Link2 className="h-4 w-4" />}
+                onClick={async () => {
+                  try {
+                    await connectAsync({ connector });
+                  } catch (err) {
+                    console.error('Wallet connect failed:', err);
+                    // Provide a helpful UI hint when MetaMask/injected provider missing
+                    const msg = (err instanceof Error && err.message) ? err.message : 'Failed to connect wallet';
+                    // eslint-disable-next-line no-alert
+                    alert(`Wallet connect error: ${msg}`);
+                  }
+                }}
+              >
+                Connect {connector.name}
+              </Button>
+            ))
         ) : (
           <>
             {status === "connected" && (
@@ -194,7 +235,7 @@ export function WalletConnector({ onAuthenticated, className }: WalletConnectorP
                 variant="ghost"
                 size="sm"
                 leadingIcon={<ExternalLink className="h-3.5 w-3.5" />}
-                to={`https://polygonscan.com/address/${address}`}
+                to={getAddressUrl(chainId ?? TARGET_CHAIN_ID, address)}
               >
                 View on Explorer
               </Button>
@@ -205,7 +246,7 @@ export function WalletConnector({ onAuthenticated, className }: WalletConnectorP
 
       {/* SIWE info when disconnected */}
       {!isConnected && (
-        <p className="text-xs text-slate-600 leading-relaxed">
+        <p className="text-xs text-slate-400 leading-relaxed">
           Sign In With Ethereum (SIWE) is used for secure, wallet-based authentication.
           No password required.
         </p>
