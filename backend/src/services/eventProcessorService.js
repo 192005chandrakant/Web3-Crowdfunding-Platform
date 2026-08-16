@@ -1,18 +1,31 @@
 const Donation = require("../models/Donation");
 const Campaign = require("../models/Campaign");
-const Notification = require("../models/Notification");
-const User = require("../models/User");
+const Vote = require("../models/Vote");
 const { NOTIFICATION_TYPES } = require("../config/constants");
+const { notificationEngine } = require("./notifications/NotificationEngine");
 const { invalidateCampaignCache } = require("./cacheService");
-const { 
-  sendMilestoneNotification, 
-  sendDonationReceivedNotification, 
-  sendProofSubmittedNotification 
-} = require("./emailService");
+const {
+  computeQVPower,
+  qvPowerToDisplay,
+  isEligibleToVote,
+  getDonorTotalWei
+} = require("./quadraticVotingService");
+
+function weiToPolDisplay(amountWei) {
+  try {
+    const wei = BigInt(amountWei || "0");
+    const base = 10n ** 18n;
+    const whole = wei / base;
+    const fraction = (wei % base).toString().padStart(18, "0").slice(0, 4);
+    return `${whole}.${fraction}`;
+  } catch {
+    return "0.0000";
+  }
+}
 
 /**
  * Process a ContributionReceived event.
- * Auto-creates a Donation record and notifies the campaign creator.
+ * Auto-creates a Donation record and dispatches live notification to campaign creator via Observer engine.
  */
 async function processContributionReceived(event) {
   const { contributor, amount, amountWei } = event.data;
@@ -20,6 +33,12 @@ async function processContributionReceived(event) {
   // Create donation record (txHash dedup is handled by unique index)
   const existing = await Donation.findOne({ txHash: event.txHash }).lean();
   if (!existing) {
+    const priorTotalWei = await getDonorTotalWei(contributor, event.contractAddress);
+    const totalWeiAfter = (BigInt(priorTotalWei) + BigInt(amountWei || "0")).toString();
+    const qvPower = computeQVPower(totalWeiAfter);
+    const qvPowerDisplay = qvPowerToDisplay(qvPower);
+    const eligible = isEligibleToVote(totalWeiAfter);
+
     await Donation.create({
       walletAddress: contributor.toLowerCase(),
       campaignAddress: event.contractAddress,
@@ -28,86 +47,153 @@ async function processContributionReceived(event) {
       txHash: event.txHash,
       chainId: event.chainId,
       blockNumber: event.blockNumber,
-      status: "confirmed"
+      status: "confirmed",
+      quadraticVotingPower: qvPower,
+      qvPowerDisplay,
+      isEligibleToVote: eligible
     });
+
+    console.log(
+      `[QV] Contribution processed: ${contributor} → ${amount} POL | QV Power: ${qvPowerDisplay} votes | Eligible: ${eligible}`
+    );
   }
 
   await invalidateCampaignCache(event.contractAddress);
 
-  // Notify campaign creator
+  // Notify campaign creator via centralized Observer design pattern
   const campaign = await Campaign.findOne({
     contractAddress: event.contractAddress
   }).lean();
 
   if (campaign) {
-    await Notification.create({
+    await notificationEngine.notify({
       walletAddress: campaign.creatorAddress,
-      type: NOTIFICATION_TYPES.CAMPAIGN_UPDATE,
-      title: "New contribution received",
-      message: `A donor contributed ${amount || "some"} MATIC to "${campaign.title}".`,
+      type: "donation_received", // Triggers specialized donation EmailObserver template & instant SSE toast
+      title: `🎉 New donation to "${campaign.title}"!`,
+      message: `A generous donor contributed ${amount || "some"} MATIC/POL to your campaign.`,
       metadata: {
         contractAddress: event.contractAddress,
+        campaignTitle: campaign.title,
         contributor,
         amount,
-        txHash: event.txHash
+        txHash: event.txHash,
+        actionUrl: `${process.env.FRONTEND_URL || "http://localhost:5173"}/campaign/${event.contractAddress}/manage`
       }
     });
 
-    // Send email to creator
-    const creator = await User.findOne({ walletAddress: campaign.creatorAddress }).lean();
-    if (creator?.email) {
-      await sendDonationReceivedNotification({
-        email: creator.email,
+    await notifyCampaignDonors({
+      contractAddress: event.contractAddress,
+      type: NOTIFICATION_TYPES.CAMPAIGN_UPDATE,
+      title: `💸 Donation confirmed for "${campaign.title}"`,
+      message: `Your contribution of ${amount || "some"} MATIC/POL has been recorded for "${campaign.title}".`,
+      metadata: {
         campaignTitle: campaign.title,
-        amount: amount || "0",
-        actionUrl: `${process.env.FRONTEND_URL || "http://localhost:5173"}/campaign/${event.contractAddress}/manage`
-      });
-    }
+        amount,
+        contributor,
+        txHash: event.txHash,
+        actionUrl: `${process.env.FRONTEND_URL || "http://localhost:5173"}/campaign/${event.contractAddress}`
+      },
+      excludeWallets: [contributor.toLowerCase()]
+    });
   }
 }
 
 /**
  * Process a MilestoneVoted event.
- * Notifies the campaign creator about the vote.
+ * Notifies campaign creator about the vote via Observer engine.
  */
 async function processMilestoneVoted(event) {
-  const { milestoneIndex, voter, support, weight } = event.data;
+  const { milestoneIndex, voter, support, qvWeight, rawContribution } = event.data;
+
+  let qvPower = qvWeight || "0";
+  let rawWei = rawContribution || "0";
+
+  if (!qvWeight) {
+    rawWei = await getDonorTotalWei(voter, event.contractAddress);
+    qvPower = computeQVPower(rawWei);
+  }
+
+  const qvPowerDisplay = qvPowerToDisplay(qvPower);
+
+  try {
+    await Vote.create({
+      walletAddress: voter.toLowerCase(),
+      campaignAddress: event.contractAddress.toLowerCase(),
+      milestoneIndex: Number(milestoneIndex),
+      support: Boolean(support),
+      txHash: event.txHash,
+      blockNumber: event.blockNumber,
+      chainId: event.chainId,
+      rawContributionWei: rawWei,
+      qvPower,
+      qvPowerDisplay
+    });
+    console.log(
+      `[QV] Vote recorded: ${voter} → ${support ? "APPROVE" : "REJECT"} | QV Power: ${qvPowerDisplay} votes`
+    );
+  } catch (voteErr) {
+    if (!voteErr.code || voteErr.code !== 11000) {
+      console.error("[QV] Failed to create Vote record:", voteErr.message);
+    }
+  }
 
   const campaign = await Campaign.findOne({
     contractAddress: event.contractAddress
   }).lean();
 
-  await invalidateCampaignCache(event.contractAddress);
-
   if (campaign) {
     const milestoneTitle =
       campaign.milestones?.[milestoneIndex]?.title || `Milestone #${milestoneIndex}`;
 
-    await Notification.create({
+    await notificationEngine.notify({
       walletAddress: campaign.creatorAddress,
       type: NOTIFICATION_TYPES.VOTING_OPEN,
-      title: `Vote received on "${milestoneTitle}"`,
-      message: `A donor ${support ? "approved" : "rejected"} milestone "${milestoneTitle}" with weight ${weight || "unknown"}.`,
+      title: `Vote cast on "${milestoneTitle}"`,
+      message: `A donor ${support ? "approved ✓" : "rejected ✗"} milestone "${milestoneTitle}" with ${qvPowerDisplay} QV weight.`,
       metadata: {
         contractAddress: event.contractAddress,
+        campaignTitle: campaign.title,
         milestoneIndex,
         voter,
         support,
-        weight,
-        txHash: event.txHash
+        qvPower,
+        qvPowerDisplay,
+        rawContributionWei: rawWei,
+        txHash: event.txHash,
+        actionUrl: `${process.env.FRONTEND_URL || "http://localhost:5173"}/campaign/${event.contractAddress}/manage`
       }
+    });
+
+    await notifyCampaignDonors({
+      contractAddress: event.contractAddress,
+      type: NOTIFICATION_TYPES.CAMPAIGN_UPDATE,
+      title: `🗳️ Vote recorded on "${milestoneTitle}"`,
+      message: `A donor ${support ? "approved ✓" : "rejected ✗"} "${milestoneTitle}" in "${campaign.title}".`,
+      metadata: {
+        campaignTitle: campaign.title,
+        milestoneIndex,
+        milestoneTitle,
+        voter,
+        support,
+        qvPower,
+        qvPowerDisplay,
+        txHash: event.txHash,
+        actionUrl: `${process.env.FRONTEND_URL || "http://localhost:5173"}/campaign/${event.contractAddress}`
+      },
+      excludeWallets: [voter.toLowerCase()]
     });
   }
 }
 
 /**
  * Process a TrancheExecuted event.
- * Updates campaign cache and notifies the creator.
+ * Notifies creator via Observer pattern (in-app, SSE streaming, email, cache sync).
  */
 async function processTrancheExecuted(event) {
   const { milestoneIndex, recipient, amount } = event.data;
-
-  await invalidateCampaignCache(event.contractAddress);
+  const index = Number(milestoneIndex);
+  const amountWei = amount || "0";
+  const amountPOL = weiToPolDisplay(amountWei);
 
   const campaign = await Campaign.findOne({
     contractAddress: event.contractAddress
@@ -115,46 +201,78 @@ async function processTrancheExecuted(event) {
 
   if (campaign) {
     const milestoneTitle =
-      campaign.milestones?.[milestoneIndex]?.title || `Milestone #${milestoneIndex}`;
+      campaign.milestones?.[index]?.title || `Milestone #${index}`;
+    const milestones = [...(campaign.milestones || [])];
 
-    await Notification.create({
+    if (milestones[index]) {
+      milestones[index] = {
+        ...milestones[index],
+        isPaid: true,
+        payoutTxHash: event.txHash,
+        payoutRecipient: recipient.toLowerCase(),
+        payoutAmountWei: amountWei,
+        payoutAmountPOL: amountPOL,
+        payoutReleasedAt: new Date()
+      };
+
+      const allPaid = milestones.length > 0 && milestones.every((m) => Boolean(m.isPaid));
+      await Campaign.findOneAndUpdate(
+        { contractAddress: event.contractAddress },
+        {
+          $set: {
+            milestones,
+            ...(allPaid ? { status: "completed" } : {})
+          }
+        }
+      );
+      await invalidateCampaignCache(event.contractAddress);
+    }
+
+    await notificationEngine.notify({
       walletAddress: campaign.creatorAddress,
       type: NOTIFICATION_TYPES.TRANCHE_RELEASED,
-      title: `Tranche released for "${milestoneTitle}"`,
-      message: `Funds (${amount || "unknown"} MATIC) have been released to ${recipient} for milestone "${milestoneTitle}".`,
+      title: `💰 Tranche released for "${milestoneTitle}"!`,
+      message: `Funds (${amountPOL} POL) have been officially released to ${recipient} following successful community vote.`,
       metadata: {
         contractAddress: event.contractAddress,
-        milestoneIndex,
+        campaignTitle: campaign.title,
+        milestoneIndex: index,
+        milestoneTitle,
         recipient,
-        amount,
-        txHash: event.txHash
+        amount: amountPOL,
+        amountWei,
+        amountPOL,
+        txHash: event.txHash,
+        actionUrl: `${process.env.FRONTEND_URL || "http://localhost:5173"}/campaign/${event.contractAddress}/manage`
       }
     });
 
-    // Send email to creator if they have an email on file
-    const user = await User.findOne({
-      walletAddress: campaign.creatorAddress
-    }).lean();
-
-    if (user?.email) {
-      await sendMilestoneNotification({
-        email: user.email,
+    await notifyCampaignDonors({
+      contractAddress: event.contractAddress,
+      type: NOTIFICATION_TYPES.TRANCHE_RELEASED,
+      title: `💰 "${campaign.title}" funds released`,
+      message: `The milestone "${milestoneTitle}" has been approved and ${amountPOL} POL has been released to the beneficiary.`,
+      metadata: {
         campaignTitle: campaign.title,
+        milestoneIndex: index,
         milestoneTitle,
-        actionUrl: `${process.env.FRONTEND_URL || "http://localhost:5173"}/campaign/${event.contractAddress}/manage`
-      });
-    }
+        recipient,
+        amount: amountPOL,
+        amountWei,
+        amountPOL,
+        txHash: event.txHash,
+        actionUrl: `${process.env.FRONTEND_URL || "http://localhost:5173"}/campaign/${event.contractAddress}`
+      }
+    });
   }
 }
 
 /**
  * Process a RefundClaimed event.
- * Updates the donation record status and notifies the donor.
  */
 async function processRefundClaimed(event) {
   const { contributor, amount } = event.data;
 
-  // Mark the donation as refunded (update latest donation by this contributor for this campaign)
   await Donation.updateMany(
     {
       walletAddress: contributor.toLowerCase(),
@@ -167,24 +285,23 @@ async function processRefundClaimed(event) {
     contractAddress: event.contractAddress
   }).lean();
 
-  await Notification.create({
+  await notificationEngine.notify({
     walletAddress: contributor.toLowerCase(),
     type: NOTIFICATION_TYPES.CAMPAIGN_UPDATE,
-    title: "Refund processed",
-    message: `Your refund of ${amount || "some"} MATIC from "${campaign?.title || "a campaign"}" has been processed.`,
+    title: "Refund processed successfully",
+    message: `Your contribution refund of ${amount || "some"} MATIC from "${campaign?.title || "campaign"}" has been claimed to your wallet.`,
     metadata: {
       contractAddress: event.contractAddress,
+      campaignTitle: campaign?.title,
       amount,
       txHash: event.txHash
     }
   });
-
-  await invalidateCampaignCache(event.contractAddress);
 }
 
 /**
  * Process a MilestoneProofSubmitted event.
- * Notifies all donors of this campaign that a proof was submitted.
+ * Broadcasts review notifications to all active campaign donors simultaneously via Observer engine.
  */
 async function processMilestoneProofSubmitted(event) {
   const { milestoneIndex, cid } = event.data;
@@ -197,7 +314,6 @@ async function processMilestoneProofSubmitted(event) {
     return;
   }
 
-  // Update the proof CID in the campaign milestones
   if (campaign.milestones?.[milestoneIndex]) {
     const milestones = [...campaign.milestones];
     milestones[milestoneIndex] = {
@@ -211,47 +327,54 @@ async function processMilestoneProofSubmitted(event) {
     );
   }
 
-  await invalidateCampaignCache(event.contractAddress);
-
-  // Get unique donor wallets for this campaign
-  const donorWallets = await Donation.distinct("walletAddress", {
-    campaignAddress: event.contractAddress
-  });
-
   const milestoneTitle =
     campaign.milestones?.[milestoneIndex]?.title || `Milestone #${milestoneIndex}`;
 
-  // Notify all donors
-  const notifications = donorWallets.map((wallet) => ({
-    walletAddress: wallet,
+  await notifyCampaignDonors({
+    contractAddress: event.contractAddress,
     type: NOTIFICATION_TYPES.MILESTONE_PROOF,
-    title: `Proof submitted for "${milestoneTitle}"`,
-    message: `The creator of "${campaign.title}" has submitted proof for milestone "${milestoneTitle}". Review and vote.`,
+    title: `📋 Proof Submitted for "${milestoneTitle}"`,
+    message: `The creator of "${campaign.title}" has uploaded documentation proof for milestone "${milestoneTitle}". Please inspect the evidence and cast your quadratic vote!`,
     metadata: {
-      contractAddress: event.contractAddress,
-      milestoneIndex,
-      cid,
-      txHash: event.txHash
-    }
-  }));
-
-  if (notifications.length > 0) {
-    await Notification.insertMany(notifications);
-  }
-
-  // Send emails to donors
-  const donors = await User.find({
-    walletAddress: { $in: donorWallets },
-    email: { $exists: true, $ne: "" }
-  }).lean();
-
-  const donorEmails = donors.map((d) => d.email);
-  if (donorEmails.length > 0) {
-    await sendProofSubmittedNotification({
-      emails: donorEmails,
       campaignTitle: campaign.title,
+      milestoneIndex,
       milestoneTitle,
+      cid,
+      txHash: event.txHash,
       actionUrl: `${process.env.FRONTEND_URL || "http://localhost:5173"}/campaign/${event.contractAddress}`
+    }
+  });
+}
+
+async function notifyCampaignDonors({
+  contractAddress,
+  type,
+  title,
+  message,
+  metadata = {},
+  excludeWallets = []
+}) {
+  const donorWallets = await Donation.distinct("walletAddress", {
+    campaignAddress: contractAddress.toLowerCase(),
+    status: "confirmed"
+  });
+
+  for (const wallet of donorWallets) {
+    const normalizedWallet = String(wallet || "").toLowerCase();
+    if (!normalizedWallet || excludeWallets.includes(normalizedWallet)) {
+      continue;
+    }
+
+    await notificationEngine.notify({
+      walletAddress: normalizedWallet,
+      type,
+      title,
+      message,
+      metadata: {
+        ...metadata,
+        contractAddress: contractAddress.toLowerCase(),
+        campaignAddress: contractAddress.toLowerCase()
+      }
     });
   }
 }

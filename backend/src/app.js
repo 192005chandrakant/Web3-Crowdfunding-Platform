@@ -21,6 +21,8 @@ const mediaRoutes = require("./routes/mediaRoutes");
 const donationRoutes = require("./routes/donationRoutes");
 const webhookRoutes = require("./routes/webhookRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const votingRoutes = require("./routes/votingRoutes");
+const { serviceManager } = require("./services/serviceManager");
 
 const app = express();
 const env = getEnvConfig();
@@ -47,16 +49,12 @@ app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 app.get("/health", (_req, res) => {
+  const diagnostics = serviceManager.getDiagnostics();
   res.json({
     status: "ok",
     chainId: env.chainId,
-    services: {
-      mongodb: Boolean(env.mongoUri),
-      redis: Boolean(env.redis.url && env.redis.token),
-      pinata: Boolean(env.pinata.apiKey || env.pinata.jwt),
-      cloudinary: Boolean(env.cloudinary.cloudName),
-      resend: Boolean(env.resend.apiKey)
-    }
+    services: diagnostics.services,
+    notificationSystem: diagnostics.notificationSystem
   });
 });
 
@@ -75,12 +73,14 @@ app.use("/api/media", mediaRoutes);
 app.use("/api/donations", donationRoutes);
 app.use("/api/webhooks", webhookRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/voting", votingRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
 
 async function startServer() {
   await connectDatabase(env.mongoUri);
+  await serviceManager.initServices();
   app.listen(port, () => {
     console.log(`Backend API listening on port ${port} (chainId ${env.chainId})`);
   });

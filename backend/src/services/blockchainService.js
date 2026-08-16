@@ -10,7 +10,7 @@ const CAMPAIGN_ABI = [
   "function totalFundsRemaining() view returns (uint256)",
   "function fundraisingGoal() view returns (uint256)",
   "function milestoneCount() view returns (uint256)",
-  "function milestones(uint256 index) view returns (string title, uint256 targetAmount, uint256 deadline, string ipfsProofHash, uint256 approvalVotes, uint256 rejectionVotes, bool isCurrent, bool isPaid)"
+  "function milestones(uint256 index) view returns (uint256 targetAmount, uint256 deadline, uint256 approvalQVWeight, uint256 rejectionQVWeight, uint256 snapshotTotalQVWeight, bool isCurrent, bool isPaid, string title, string ipfsProofHash)"
 ];
 
 let provider = null;
@@ -81,8 +81,9 @@ async function fetchOnChainCampaignState(contractAddress) {
       targetAmount: formatWei(milestone.targetAmount),
       deadline: milestone.deadline.toString(),
       ipfsProofHash: milestone.ipfsProofHash,
-      approvalVotes: formatWei(milestone.approvalVotes),
-      rejectionVotes: formatWei(milestone.rejectionVotes),
+      approvalQVWeight: milestone.approvalQVWeight.toString(),
+      rejectionQVWeight: milestone.rejectionQVWeight.toString(),
+      snapshotTotalQVWeight: milestone.snapshotTotalQVWeight.toString(),
       isCurrent,
       isPaid
     });

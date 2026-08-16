@@ -34,7 +34,7 @@ const blockchainEventSchema = new mongoose.Schema(
     },
     chainId: {
       type: Number,
-      default: 80002
+      default: () => Number(process.env.CHAIN_ID) || 80002
     },
     data: {
       type: mongoose.Schema.Types.Mixed,

@@ -1,9 +1,16 @@
+// Automatically trim leading/trailing whitespace from all environment variable strings
+Object.keys(process.env).forEach((key) => {
+  if (typeof process.env[key] === "string") {
+    process.env[key] = process.env[key].trim();
+  }
+});
+
 function requireEnv(name, { optional = false } = {}) {
   const value = process.env[name];
   if (!value && !optional) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
-  return value || null;
+  return value ? value.trim() : null;
 }
 
 function getEnvConfig() {
@@ -13,7 +20,9 @@ function getEnvConfig() {
     allowedOrigin: process.env.ALLOWED_ORIGIN || "http://localhost:5173",
     chainId: Number(process.env.CHAIN_ID) || 80002,
     rpcUrl:
+      process.env.BLOCKCHAIN_RPC_URL ||
       process.env.ALCHEMY_AMOY_URL ||
+      process.env.GANACHE_RPC_URL ||
       process.env.ALCHEMY_RPC_URL ||
       "https://rpc-amoy.polygon.technology",
     pinata: {
