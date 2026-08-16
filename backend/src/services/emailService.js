@@ -1,33 +1,38 @@
 const { Resend } = require("resend");
 
 function isResendConfigured() {
-  return Boolean(process.env.RESEND_API_KEY);
+  return Boolean(process.env.RESEND_API_KEY?.trim());
 }
 
 function createResendClient() {
   if (!isResendConfigured()) {
     throw new Error("Missing Resend API key");
   }
-  return new Resend(process.env.RESEND_API_KEY);
+  return new Resend(process.env.RESEND_API_KEY.trim());
 }
 
-async function sendNotificationEmail({ to, subject, html }) {
-  if (!isResendConfigured()) {
-    console.warn("[email] Resend not configured; skipping send to", to);
-    return { skipped: true };
+async function sendNotificationEmail({ to, subject, html, text, tags }) {
+  if (!to) {
+    throw new Error("Email recipient is required");
   }
 
   const resend = createResendClient();
   const from = process.env.RESEND_FROM_EMAIL || "notifications@milestonechain.dev";
 
-  const result = await resend.emails.send({
+  const { data, error } = await resend.emails.send({
     from,
     to,
     subject,
-    html
+    html,
+    text,
+    tags
   });
 
-  return result;
+  if (error) {
+    throw new Error(error.message || JSON.stringify(error));
+  }
+
+  return data;
 }
 
 async function sendMilestoneNotification({ email, campaignTitle, milestoneTitle, actionUrl }) {
@@ -42,7 +47,9 @@ async function sendMilestoneNotification({ email, campaignTitle, milestoneTitle,
 }
 
 async function sendProofSubmittedNotification({ emails, campaignTitle, milestoneTitle, actionUrl }) {
-  if (!emails || emails.length === 0) return { skipped: true };
+  if (!emails || emails.length === 0) {
+    throw new Error("At least one proof notification recipient is required");
+  }
 
   const subject = `Proof Submitted: ${campaignTitle}`;
   const html = `
@@ -52,8 +59,7 @@ async function sendProofSubmittedNotification({ emails, campaignTitle, milestone
     <p><a href="${actionUrl}">View Campaign</a></p>
   `;
 
-  // Resend supports sending to multiple BCC or looping. For simplicity, we loop.
-  return Promise.all(emails.map(email => sendNotificationEmail({ to: email, subject, html })));
+  return sendNotificationEmail({ to: emails, subject, html });
 }
 
 async function sendDonationReceivedNotification({ email, campaignTitle, amount, actionUrl }) {

@@ -8,11 +8,27 @@ const {
 } = require("../config/validators");
 const {
   listNotifications,
+  streamNotifications,
   createNotification,
-  markNotificationRead
+  sendTestNotification,
+  markNotificationRead,
+  markAllNotificationsRead
 } = require("../controllers/notificationController");
 
 const router = express.Router();
+
+// Real-time SSE live stream endpoint for client browsers
+router.get(
+  "/stream/:walletAddress",
+  validateRequest(walletAddressParamSchema, "params"),
+  streamNotifications
+);
+
+// Trigger a synthetic test notification across all observers
+router.post(
+  "/test",
+  asyncHandler(sendTestNotification)
+);
 
 router.get(
   "/:walletAddress",
@@ -26,6 +42,13 @@ router.patch(
   "/:id/read",
   validateRequest(notificationIdSchema, "params"),
   asyncHandler(markNotificationRead)
+);
+
+// Mark ALL unread notifications for a wallet as read
+router.patch(
+  "/:walletAddress/read-all",
+  validateRequest(walletAddressParamSchema, "params"),
+  asyncHandler(markAllNotificationsRead)
 );
 
 module.exports = router;
