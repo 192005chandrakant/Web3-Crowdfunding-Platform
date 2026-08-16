@@ -6,7 +6,13 @@ const milestoneSchema = new mongoose.Schema(
     title: { type: String, required: true, trim: true },
     targetAmount: { type: Number, required: true },
     deadline: { type: String, required: true },
-    proofCid: { type: String, default: "" }
+    proofCid: { type: String, default: "" },
+    isPaid: { type: Boolean, default: false },
+    payoutTxHash: { type: String, default: "" },
+    payoutRecipient: { type: String, default: "" },
+    payoutAmountWei: { type: String, default: "" },
+    payoutAmountPOL: { type: String, default: "" },
+    payoutReleasedAt: { type: Date, default: null }
   },
   { _id: false }
 );
@@ -40,7 +46,8 @@ const campaignSchema = new mongoose.Schema(
       default: "active",
       index: true
     },
-    chainId: { type: Number, default: 80002 },
+    chainId: { type: Number, default: () => Number(process.env.CHAIN_ID) || 80002 },
+    clerkUserId: { type: String, default: null, index: true },
     flagged: { type: Boolean, default: false, index: true },
     flagReason: { type: String, default: null }
   },

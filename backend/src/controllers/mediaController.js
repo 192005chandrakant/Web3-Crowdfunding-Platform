@@ -2,6 +2,7 @@ const { uploadImageBuffer, isCloudinaryConfigured } = require("../services/cloud
 
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+const ETH_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 
 async function uploadCampaignCover(req, res) {
   if (!isCloudinaryConfigured()) {
@@ -29,16 +30,34 @@ async function uploadCampaignCover(req, res) {
     });
   }
 
+  const contractAddress = String(req.body?.contractAddress || "").trim().toLowerCase();
+  if (contractAddress && !ETH_ADDRESS_PATTERN.test(contractAddress)) {
+    return res.status(400).json({
+      success: false,
+      message: "contractAddress must be a valid 0x campaign address"
+    });
+  }
+
+  const uploadScope = contractAddress || "pending";
   const result = await uploadImageBuffer(req.file.buffer, {
-    folder: "milestonechain/campaign-covers"
+    folder: `milestonechain/campaign-covers/${uploadScope}`,
+    filename: req.file.originalname,
+    context: {
+      uploadType: "campaign-cover",
+      contractAddress: contractAddress || "",
+      uploadedBy: req.walletAddress || req.clerkUserId || "unknown"
+    }
   });
 
   res.status(201).json({
     success: true,
     coverImageUrl: result.url,
     publicId: result.publicId,
+    assetId: result.assetId,
     width: result.width,
-    height: result.height
+    height: result.height,
+    bytes: result.bytes,
+    format: result.format
   });
 }
 

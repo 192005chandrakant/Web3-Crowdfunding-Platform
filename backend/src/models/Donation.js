@@ -31,7 +31,7 @@ const donationSchema = new mongoose.Schema(
     },
     chainId: {
       type: Number,
-      default: 80002
+      default: () => Number(process.env.CHAIN_ID) || 80002
     },
     blockNumber: {
       type: Number,
@@ -41,6 +41,25 @@ const donationSchema = new mongoose.Schema(
       type: String,
       enum: ["confirmed", "pending", "failed"],
       default: "confirmed",
+      index: true
+    },
+    // ── Quadratic Voting fields ─────────────────────────────────────────────
+    // quadraticVotingPower: floor(sqrt(amountWei)) stored as string for BigInt precision
+    // Example: 100 POL (100e18 wei) → sqrt(100e18) = 10e9 → stored as "10000000000"
+    quadraticVotingPower: {
+      type: String,
+      default: "0"
+    },
+    // qvPowerDisplay: human-readable (qvPower / 1e9 formatted to 4dp)
+    // Example: "10.0000" means the donor gets 10 votes
+    qvPowerDisplay: {
+      type: String,
+      default: "0.0000"
+    },
+    // isEligibleToVote: true if amountWei >= MIN_CONTRIBUTION_WEI (0.001 POL = 1e15 wei)
+    isEligibleToVote: {
+      type: Boolean,
+      default: false,
       index: true
     }
   },
