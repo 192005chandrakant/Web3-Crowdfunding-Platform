@@ -23,6 +23,7 @@ class ServiceManager {
   constructor() {
     this.initialized = false;
     this.servicesStatus = {
+      mongodb: false,
       notificationEngine: false,
       cloudinary: false,
       pinata: false,
@@ -39,6 +40,16 @@ class ServiceManager {
     console.log("\n=======================================================");
     console.log("  BOOTSTRAPPING MILESTONECHAIN INTEGRATED SERVICES");
     console.log("=======================================================");
+
+    // 0. Verify MongoDB Primary Database Status
+    const mongoose = require("mongoose");
+    if (mongoose.connection.readyState === 1) {
+      this.servicesStatus.mongodb = true;
+      console.log(`✔ MongoDB database running and operational (DB: ${mongoose.connection.name || "primary"}).`);
+    } else {
+      this.servicesStatus.mongodb = false;
+      console.warn(`⚠ MongoDB database is not connected (readyState: ${mongoose.connection.readyState}).`);
+    }
 
     // 1. Setup Notification Engine Observers (Observer Pattern)
     try {

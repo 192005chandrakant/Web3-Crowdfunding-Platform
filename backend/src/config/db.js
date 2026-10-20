@@ -8,11 +8,45 @@ try {
 
 const mongoose = require("mongoose");
 
+let listenersRegistered = false;
+
+function registerConnectionEvents() {
+  if (listenersRegistered) return;
+  listenersRegistered = true;
+
+  mongoose.connection.on("disconnected", () => {
+    console.warn("⚠ MongoDB connection lost (disconnected).");
+  });
+
+  mongoose.connection.on("reconnected", () => {
+    console.log("✔ MongoDB reconnected and running.");
+  });
+
+  mongoose.connection.on("error", (err) => {
+    console.error("✗ MongoDB connection error:", err.message);
+  });
+}
+
+function isMongoConnected() {
+  return mongoose.connection.readyState === 1;
+}
+
+async function isMongoRunning() {
+  if (mongoose.connection.readyState !== 1) return false;
+  try {
+    const res = await mongoose.connection.db.command({ ping: 1 });
+    return Boolean(res && res.ok === 1);
+  } catch {
+    return false;
+  }
+}
+
 async function connectDatabase(mongoUri, maxRetries = 5, retryDelay = 5000) {
   if (!mongoUri) {
     throw new Error("Missing MONGODB_URI environment variable");
   }
 
+  registerConnectionEvents();
   mongoose.set("strictQuery", true);
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -22,7 +56,14 @@ async function connectDatabase(mongoUri, maxRetries = 5, retryDelay = 5000) {
         connectTimeoutMS: 10000,
         family: 4 // Force IPv4
       });
-      console.log("Successfully connected to MongoDB");
+
+      // Ping to verify MongoDB is actively responding and running
+      try {
+        await mongoose.connection.db.command({ ping: 1 });
+        console.log(`✔ MongoDB connected and running successfully (Host: ${mongoose.connection.host}, Database: ${mongoose.connection.name})`);
+      } catch (pingErr) {
+        console.log(`✔ MongoDB connected (ping check failed: ${pingErr.message})`);
+      }
       return;
     } catch (error) {
       console.error(`MongoDB connection attempt ${attempt}/${maxRetries} failed:`);
@@ -46,4 +87,4 @@ async function connectDatabase(mongoUri, maxRetries = 5, retryDelay = 5000) {
   }
 }
 
-module.exports = { connectDatabase };
+module.exports = { connectDatabase, isMongoConnected, isMongoRunning };

@@ -1,4 +1,4 @@
-const Notification = require("../models/Notification");
+﻿const Notification = require("../models/Notification");
 const { notificationEngine } = require("../services/notifications/NotificationEngine");
 const realtimeSSEObserver = require("../services/notifications/observers/RealtimeSSEObserver");
 
@@ -77,7 +77,7 @@ async function sendTestNotification(req, res) {
     walletAddress,
     recipientEmail,
     type,
-    title: title || "⚡ Live System Test Notification",
+    title: title || "âš¡ Live System Test Notification",
     message: message || "Your integrated Observer Design Pattern Notification engine & Real-time SSE stream are 100% active and operational!",
     metadata: {
       isTest: true,
@@ -102,7 +102,7 @@ async function markNotificationRead(req, res) {
   const notification = await Notification.findByIdAndUpdate(
     id,
     { $set: { readAt: new Date() } },
-    { new: true }
+    { returnDocument: 'after' }
   ).lean();
 
   if (!notification) {

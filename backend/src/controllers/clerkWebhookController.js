@@ -1,4 +1,4 @@
-const { Webhook } = require("svix");
+﻿const { Webhook } = require("svix");
 const User = require("../models/User");
 const { getEnvConfig } = require("../config/env");
 
@@ -51,7 +51,7 @@ async function handleClerkWebhook(req, res) {
   console.log(`[ClerkWebhook] event=${eventType} clerkUserId=${clerkUserId}`);
 
   try {
-    // ── user.created / user.updated ──────────────────────────────────────────
+    // â”€â”€ user.created / user.updated â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (eventType === "user.created" || eventType === "user.updated") {
       const email = evt.data.email_addresses?.[0]?.email_address || "";
       const displayName = evt.data.first_name
@@ -62,10 +62,10 @@ async function handleClerkWebhook(req, res) {
       const web3WalletRaw = evt.data.web3_wallets?.[0]?.web3_wallet || null;
       const web3Wallet = web3WalletRaw ? web3WalletRaw.toLowerCase() : null;
 
-      // ── 1. Try to find by clerkUserId (most precise) ──
+      // â”€â”€ 1. Try to find by clerkUserId (most precise) â”€â”€
       let existingUser = await User.findOne({ clerkUserId });
 
-      // ── 2. If not found, try email (dedup: same person signed up via wallet earlier) ──
+      // â”€â”€ 2. If not found, try email (dedup: same person signed up via wallet earlier) â”€â”€
       if (!existingUser && email) {
         existingUser = await User.findOne({ email: email.toLowerCase() });
         if (existingUser) {
@@ -73,7 +73,7 @@ async function handleClerkWebhook(req, res) {
         }
       }
 
-      // ── 3. Build the update ──
+      // â”€â”€ 3. Build the update â”€â”€
       const $set = {
         clerkUserId,
         email: email.toLowerCase() || existingUser?.email || "",
@@ -103,14 +103,14 @@ async function handleClerkWebhook(req, res) {
 
       await User.findOneAndUpdate(query, updateOp, {
         upsert: true,
-        new: true,
+        returnDocument: 'after',
         setDefaultsOnInsert: true
       });
 
       console.log(`[ClerkWebhook] User synced: clerkUserId=${clerkUserId} wallet=${web3Wallet || "none"}`);
     }
 
-    // ── user.deleted ──────────────────────────────────────────────────────────
+    // â”€â”€ user.deleted â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // We soft-delete by suspending, not hard-deleting, so donation history is preserved.
     else if (eventType === "user.deleted") {
       await User.findOneAndUpdate(

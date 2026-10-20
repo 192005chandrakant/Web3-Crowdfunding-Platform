@@ -1,4 +1,4 @@
-const Campaign = require("../models/Campaign");
+﻿const Campaign = require("../models/Campaign");
 const Notification = require("../models/Notification");
 const User = require("../models/User");
 const {
@@ -55,7 +55,7 @@ async function createOrUpdateCampaign(payload) {
   const campaign = await Campaign.findOneAndUpdate(
     { contractAddress: payload.contractAddress },
     update,
-    { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true }
+    { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true, runValidators: true }
   ).lean();
 
   await invalidateCampaignCache(payload.contractAddress);
@@ -145,7 +145,7 @@ async function updateCampaignMetadata(address, updates) {
   const campaign = await Campaign.findOneAndUpdate(
     { contractAddress: address },
     { $set: updates },
-    { new: true }
+    { returnDocument: 'after' }
   ).lean();
 
   if (!campaign) {
@@ -178,7 +178,7 @@ async function recordProofSubmission({ contractAddress, milestoneIndex, cid, sub
   const updated = await Campaign.findOneAndUpdate(
     { contractAddress },
     { $set: { milestones } },
-    { new: true }
+    { returnDocument: 'after' }
   ).lean();
 
   await invalidateCampaignCache(contractAddress);

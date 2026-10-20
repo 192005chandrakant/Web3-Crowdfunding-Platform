@@ -1,4 +1,4 @@
-const User = require("../models/User");
+﻿const User = require("../models/User");
 const Campaign = require("../models/Campaign");
 const Donation = require("../models/Donation");
 const BlockchainEvent = require("../models/BlockchainEvent");
@@ -60,7 +60,7 @@ async function recordAdminAuditLog(entry) {
   }
 }
 
-// ───────────── User Management ─────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ User Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function listAllUsers(req, res) {
   const { page, limit, role, accountStatus, search } = req.validated.query;
@@ -117,7 +117,7 @@ async function updateUserRole(req, res) {
         reviewNotes: ""
       }
     },
-    { new: true }
+    { returnDocument: 'after' }
   ).lean();
 
   if (!user) {
@@ -164,7 +164,7 @@ async function reviewUserAccount(req, res) {
         reviewNotes: reviewNotes || ""
       }
     },
-    { new: true }
+    { returnDocument: 'after' }
   ).lean();
 
   if (!user) {
@@ -220,7 +220,7 @@ async function updateUserVerification(req, res) {
   const user = await User.findOneAndUpdate(
     userWalletFilter(walletAddress),
     { $set: { verificationStatus } },
-    { new: true }
+    { returnDocument: 'after' }
   ).lean();
 
   if (!user) {
@@ -249,7 +249,7 @@ async function updateUserVerification(req, res) {
   res.json({ success: true, user });
 }
 
-// ───────────── Campaign Management ─────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Campaign Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function flagCampaign(req, res) {
   const { address } = req.validated.params;
@@ -265,7 +265,7 @@ async function flagCampaign(req, res) {
         flagReason: flagged ? flagReason || "Flagged by admin" : null
       }
     },
-    { new: true }
+    { returnDocument: 'after' }
   ).lean();
 
   if (!campaign) {
@@ -339,7 +339,7 @@ async function updateCampaignStatus(req, res) {
   const campaign = await Campaign.findOneAndUpdate(
     { contractAddress: address.toLowerCase() },
     { $set: { status } },
-    { new: true }
+    { returnDocument: 'after' }
   ).lean();
 
   if (!campaign) {
@@ -373,7 +373,7 @@ async function updateCampaignStatus(req, res) {
   res.json({ success: true, campaign });
 }
 
-// ───────────── Platform Health & Stats ─────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Platform Health & Stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function getPlatformHealth(req, res) {
   const startedAt = Date.now();
@@ -765,7 +765,7 @@ async function getLedger(req, res) {
   });
 }
 
-// ───────────── Analytics Endpoints ─────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Analytics Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function getDonationsOverTime(req, res) {
   const days = parseInt(req.query.days, 10) || 30;

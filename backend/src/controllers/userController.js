@@ -1,7 +1,7 @@
-const User = require("../models/User");
+﻿const User = require("../models/User");
 const { VERIFICATION_STATUS, ROLES_REQUIRING_ADMIN_REVIEW } = require("../config/constants");
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function getAdminWalletAllowlist() {
   return (process.env.ADMIN_WALLET_ADDRESSES || "")
@@ -35,7 +35,7 @@ function resolveRoleDefaults(wallet, persistedRole, requestedRole) {
     };
   }
 
-  // Donor and any unknown role → immediately active
+  // Donor and any unknown role â†’ immediately active
   return {
     role: effective,
     requestedRole: effective,
@@ -107,7 +107,7 @@ function buildUserShell({ walletAddress, clerkUserId, role, requestedRole, accou
   };
 }
 
-// ─── Multi-wallet identity resolution ────────────────────────────────────────
+// â”€â”€â”€ Multi-wallet identity resolution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /**
  * Find an existing user by: clerkUserId (primary) OR wallet (primary OR in walletAddresses[]).
  * This prevents duplicate accounts when a user connects a new wallet to an existing Clerk account.
@@ -127,7 +127,7 @@ async function findExistingUser(wallet, clerkUserId) {
   return User.findOne({ $or: orConditions }).lean();
 }
 
-// ─── upsertUser ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ upsertUser â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /**
  * POST /api/users
  * Creates or updates the user record for the current session.
@@ -152,10 +152,10 @@ async function upsertUser(req, res) {
   const wallet = payload.walletAddress ? payload.walletAddress.toLowerCase() : null;
   const clerkUserId = payload.clerkUserId || null;
 
-  // ── Identify existing record (multi-wallet aware) ──
+  // â”€â”€ Identify existing record (multi-wallet aware) â”€â”€
   const existingUser = await findExistingUser(wallet, clerkUserId);
 
-  // ── Role resolution ──
+  // â”€â”€ Role resolution â”€â”€
   let roleUpdate;
   if (existingUser && existingUser.hasOnboarded) {
     const desiredRole = payload.requestedRole || payload.role;
@@ -172,20 +172,20 @@ async function upsertUser(req, res) {
     roleUpdate = resolveRoleDefaults(wallet || existingUser?.walletAddress, existingUser?.role, desiredRole);
   }
 
-  // ── Determine hasOnboarded ──
+  // â”€â”€ Determine hasOnboarded â”€â”€
   // Mark as onboarded if the payload includes an explicit role selection
   // (i.e., the user submitted the onboarding form, not just an auth sync).
   const isOnboardingSubmit = Boolean(payload.requestedRole || payload.role);
   const hasOnboarded = existingUser?.hasOnboarded || isOnboardingSubmit;
 
-  // ── Wallet array management ──
+  // â”€â”€ Wallet array management â”€â”€
   // Build the $addToSet for walletAddresses to support multi-wallet.
   const walletArrayOps = {};
   if (wallet) {
     walletArrayOps["$addToSet"] = { walletAddresses: wallet };
   }
 
-  // ── Build update fields ──
+  // â”€â”€ Build update fields â”€â”€
   const updateFields = {
     // Identity
     walletAddress: wallet || existingUser?.walletAddress || undefined,
@@ -203,7 +203,7 @@ async function upsertUser(req, res) {
     delete updateFields.walletAddress;
   }
 
-  // ── Merge preferences granularly ──
+  // â”€â”€ Merge preferences granularly â”€â”€
   if (payload.preferences) {
     if (payload.preferences.notifications) {
       updateFields["preferences.notifications"] = {
@@ -225,7 +225,7 @@ async function upsertUser(req, res) {
     }
   }
 
-  // ── Build the update operation (combine $set and $addToSet safely) ──
+  // â”€â”€ Build the update operation (combine $set and $addToSet safely) â”€â”€
   const updateOp = { $set: updateFields };
   if (wallet) {
     updateOp["$addToSet"] = { walletAddresses: wallet };
@@ -244,13 +244,13 @@ async function upsertUser(req, res) {
   const user = await User.findOneAndUpdate(
     query,
     updateOp,
-    { new: true, upsert: true }
+    { returnDocument: 'after', upsert: true }
   ).lean();
 
   res.status(200).json({ success: true, user });
 }
 
-// ─── getUserByWallet ──────────────────────────────────────────────────────────
+// â”€â”€â”€ getUserByWallet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function getUserByWallet(req, res) {
   const { walletAddress } = req.validated ? req.validated.params : req.params;
   const wallet = walletAddress.toLowerCase();
@@ -274,14 +274,14 @@ async function getUserByWallet(req, res) {
   // Re-run admin allowlist check (allowlist is env-level, always authoritative)
   const defaults = resolveRoleDefaults(wallet, user.role, user.requestedRole || user.role);
   if (defaults.role === "admin" && user.role !== "admin") {
-    // Allowlisted admin — reflect runtime role without persisting (admin set it already)
+    // Allowlisted admin â€” reflect runtime role without persisting (admin set it already)
     user = { ...user, role: "admin", accountStatus: "active" };
   }
 
   res.json({ success: true, exists: true, user });
 }
 
-// ─── getCurrentUser ───────────────────────────────────────────────────────────
+// â”€â”€â”€ getCurrentUser â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /**
  * GET /api/users/me
  * Resolves current user from Clerk token (req.clerkUserId + req.walletAddress set by middleware).
@@ -319,7 +319,7 @@ async function getCurrentUser(req, res) {
   });
 }
 
-// ─── updateVerification ───────────────────────────────────────────────────────
+// â”€â”€â”€ updateVerification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function updateVerification(req, res) {
   const { walletAddress } = req.validated ? req.validated.params : req.params;
   const updates = req.validated ? req.validated.body : req.body;

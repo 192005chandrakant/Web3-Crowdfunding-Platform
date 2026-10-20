@@ -1,4 +1,4 @@
-const { getRedisClient } = require("../config/redis");
+﻿const { getRedisClient } = require("../config/redis");
 const { CACHE_TTL_SECONDS } = require("../config/constants");
 
 function campaignCacheKey(address) {
@@ -21,6 +21,20 @@ function getRequiredRedisClient() {
   return redis;
 }
 
+// --- Rate-limited cache error logger -------------------------------------------
+// Upstash REST calls can transiently fail (network blip, rate limit, etc.).
+// We suppress repeat identical messages to avoid flooding the console.
+// Only the first occurrence is logged as a warning; repeated errors are silenced
+// until the server restarts or a different error type appears.
+const _seenCacheErrors = new Set();
+function warnCacheError(label, key, message) {
+  const signature = `${label}:${message}`;
+  if (_seenCacheErrors.has(signature)) return;
+  _seenCacheErrors.add(signature);
+  console.warn(`[Cache] ${label} for ${key}: ${message} (further identical errors suppressed)`);
+}
+// -------------------------------------------------------------------------------
+
 async function getCached(key) {
   const redis = getRequiredRedisClient();
   if (!redis) {
@@ -30,7 +44,7 @@ async function getCached(key) {
   try {
     return await redis.get(key);
   } catch (error) {
-    console.warn(`[Cache] Upstash read failed for ${key}:`, error.message);
+    warnCacheError("Upstash read failed", key, error.message);
     return null;
   }
 }
@@ -45,7 +59,7 @@ async function setCached(key, value, ttlSeconds = CACHE_TTL_SECONDS) {
     await redis.set(key, value, { ex: ttlSeconds });
     return true;
   } catch (error) {
-    console.warn(`[Cache] Upstash write failed for ${key}:`, error.message);
+    warnCacheError("Upstash write failed", key, error.message);
     return false;
   }
 }
@@ -61,7 +75,7 @@ async function invalidateCampaignCache(address) {
     await redis.del(blockchainCacheKey(address));
     return true;
   } catch (error) {
-    console.warn(`[Cache] Upstash campaign invalidation failed for ${address}:`, error.message);
+    warnCacheError("Upstash campaign invalidation failed", address, error.message);
     return false;
   }
 }
@@ -76,7 +90,7 @@ async function invalidate(key) {
     await redis.del(key);
     return true;
   } catch (error) {
-    console.warn(`[Cache] Upstash invalidation failed for ${key}:`, error.message);
+    warnCacheError("Upstash invalidation failed", key, error.message);
     return false;
   }
 }

@@ -1,4 +1,5 @@
-const { ethers } = require("ethers");
+﻿const { ethers } = require("ethers");
+const http = require("http");
 const BlockchainEvent = require("../models/BlockchainEvent");
 const { getEnvConfig } = require("../config/env");
 const { processEvent } = require("./eventProcessorService");
@@ -17,6 +18,38 @@ const CAMPAIGN_ABI = [
 
 let provider = null;
 let registeredCampaigns = new Set();
+
+/**
+ * Probe whether the JSON-RPC endpoint is reachable before creating a provider.
+ * Returns true if the node responds, false if the connection is refused / times out.
+ * This prevents flooding the console with ECONNREFUSED / JsonRpcProvider retry
+ * messages when Ganache has not been started yet.
+ */
+function isRpcReachable(rpcUrl) {
+  return new Promise((resolve) => {
+    try {
+      const url = new URL(rpcUrl);
+      const port = parseInt(url.port, 10) || (url.protocol === "https:" ? 443 : 80);
+      const req = http.request(
+        {
+          hostname: url.hostname,
+          port,
+          method: "POST",
+          path: url.pathname || "/",
+          timeout: 2000
+        },
+        () => resolve(true)
+      );
+      req.on("error", () => resolve(false));
+      req.on("timeout", () => { req.destroy(); resolve(false); });
+      // Send a minimal JSON-RPC payload so the server actually processes the request
+      req.write(JSON.stringify({ jsonrpc: "2.0", method: "net_version", params: [], id: 1 }));
+      req.end();
+    } catch {
+      resolve(false);
+    }
+  });
+}
 
 function getProvider() {
   if (provider) return provider;
@@ -113,6 +146,24 @@ async function startGanacheListener() {
     return;
   }
 
+  // -- Reachability probe ----------------------------------------------------
+  // Only attempt to connect if the local RPC node is actually up.
+  // This prevents flooding the console with ECONNREFUSED / JsonRpcProvider
+  // retry messages when Ganache has not been started yet.
+  const reachable = await isRpcReachable(env.rpcUrl);
+  if (!reachable) {
+    console.warn(
+      `[ganache-listener] WARNING: RPC node not reachable at ${env.rpcUrl}.\n` +
+      `   Start Ganache first (Option B - Amoy chain ID):\n` +
+      `     ganache --server.host 127.0.0.1 --server.port 8545 --chain.chainId ${chainId}\n` +
+      `   Then deploy contracts:\n` +
+      `     cd blockchain && npm run deploy:ganache-amoy\n` +
+      `   Blockchain event listener will be INACTIVE for this session.`
+    );
+    return;
+  }
+  // --------------------------------------------------------------------------
+
   const prov = getProvider();
   const factoryAddress =
     process.env.CAMPAIGN_FACTORY_ADDRESS ||
@@ -124,19 +175,16 @@ async function startGanacheListener() {
     const factory = new ethers.Contract(factoryAddress, FACTORY_ABI, prov);
     factory.on("CampaignCreated", async (campaignAddress, creator, goal, event) => {
       console.log(`[ganache-listener] CampaignCreated: ${campaignAddress} by ${creator}`);
-      // record factory event and process
       await ensureRecordedAndProcess("CampaignCreated", campaignAddress, event.transactionHash, event.blockNumber, {
         creator,
         goal: goal.toString()
       });
-      // register listeners for the new campaign
       await registerCampaignListeners(campaignAddress);
     });
     console.log(`[ganache-listener] Listening for CampaignCreated on factory ${factoryAddress}`);
   }
 
-  // Optionally: scan existing campaigns from DB and register their listeners
-  // (lightweight, idempotent)
+  // Scan existing campaigns from DB and register their listeners (idempotent)
   const Campaign = require("../models/Campaign");
   const campaigns = await Campaign.find({}).lean().select("contractAddress");
   for (const c of campaigns) {
@@ -149,8 +197,8 @@ async function startGanacheListener() {
     }
   }
 
-  // Also perform a historical sync: fetch past factory and campaign events so
-  // any transactions mined before the listener started are still processed.
+  // Historical sync: fetch past events so transactions mined before the listener
+  // started are still processed.
   try {
     const latestBlock = await prov.getBlockNumber();
     const fromBlock = Number(process.env.GANACHE_SYNC_FROM_BLOCK || 0);
@@ -161,9 +209,9 @@ async function startGanacheListener() {
       for (const log of logs) {
         try {
           const parsed = factoryIface.parseLog(log);
-          if (parsed && parsed.name === 'CampaignCreated') {
+          if (parsed && parsed.name === "CampaignCreated") {
             const campaignAddress = parsed.args.campaignAddress || parsed.args[0];
-            await ensureRecordedAndProcess('CampaignCreated', campaignAddress, log.transactionHash, log.blockNumber, {
+            await ensureRecordedAndProcess("CampaignCreated", campaignAddress, log.transactionHash, log.blockNumber, {
               creator: parsed.args.creator || parsed.args[1],
               goal: (parsed.args.goal || parsed.args[2]).toString()
             });
@@ -175,7 +223,6 @@ async function startGanacheListener() {
       }
     }
 
-    // Historical sync for each campaign: fetch ContributionReceived/MilestoneVoted/etc.
     const campaignIface = new ethers.Interface(CAMPAIGN_ABI);
     for (const c of campaigns) {
       const addr = c.contractAddress;
@@ -187,33 +234,31 @@ async function startGanacheListener() {
             if (!parsed) continue;
             const name = parsed.name;
             const data = {};
-            // normalize fields for event processor
-            if (name === 'ContributionReceived') {
+            if (name === "ContributionReceived") {
               data.contributor = parsed.args.contributor || parsed.args[0];
               data.amount = (parsed.args.amount || parsed.args[1]).toString();
               data.amountWei = data.amount;
               data.qvPower = (parsed.args.qvPower || parsed.args[2]).toString();
-            } else if (name === 'MilestoneProofSubmitted') {
+            } else if (name === "MilestoneProofSubmitted") {
               data.milestoneIndex = Number(parsed.args.milestoneIndex || parsed.args[0]);
               data.cid = parsed.args.cid || parsed.args[1];
               data.snapshotTotalQVWeight = (parsed.args.snapshotTotalQVWeight || parsed.args[2]).toString();
-            } else if (name === 'MilestoneVoted') {
+            } else if (name === "MilestoneVoted") {
               data.milestoneIndex = Number(parsed.args.milestoneIndex || parsed.args[0]);
               data.voter = parsed.args.voter || parsed.args[1];
               data.support = parsed.args.support || parsed.args[2];
               data.qvWeight = (parsed.args.qvWeight || parsed.args[3]).toString();
               data.rawContribution = (parsed.args.rawContribution || parsed.args[4]).toString();
-            } else if (name === 'TrancheExecuted') {
+            } else if (name === "TrancheExecuted") {
               data.milestoneIndex = Number(parsed.args.milestoneIndex || parsed.args[0]);
               data.recipient = parsed.args.recipient || parsed.args[1];
               data.amount = (parsed.args.amount || parsed.args[2]).toString();
-            } else if (name === 'RefundClaimed') {
+            } else if (name === "RefundClaimed") {
               data.contributor = parsed.args.contributor || parsed.args[0];
               data.amount = (parsed.args.amount || parsed.args[1]).toString();
             } else {
               continue;
             }
-
             await ensureRecordedAndProcess(name, addr, log.transactionHash, log.blockNumber, data);
           } catch (e) {
             // ignore parsing errors
@@ -224,7 +269,7 @@ async function startGanacheListener() {
       }
     }
   } catch (err) {
-    console.warn('[ganache-listener] Historical sync failed:', err.message);
+    console.warn("[ganache-listener] Historical sync failed:", err.message);
   }
 
   console.log("[ganache-listener] Ganache event listener started and historical sync complete.");
