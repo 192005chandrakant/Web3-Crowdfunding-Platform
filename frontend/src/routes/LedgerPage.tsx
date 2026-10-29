@@ -28,6 +28,39 @@ function getTypeBadgeVariant(type: PlatformLedgerItem['type']) {
   return 'primary' as const;
 }
 
+/**
+ * Safely convert a raw Wei string or a human-readable POL string to a
+ * formatted display value like "1.0000".
+ * Priority: amountWei (most reliable) → amount (fallback, detect Wei scale).
+ */
+function formatLedgerAmount(amount?: string, amountWei?: string): string {
+  // 1. Try amountWei first
+  try {
+    if (amountWei && /^\d+$/.test(amountWei) && BigInt(amountWei) >= 0n) {
+      const val = parseFloat(formatUnits(BigInt(amountWei), 18));
+      return val.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+    }
+  } catch { /* fall through */ }
+
+  // 2. Fallback to amount field
+  try {
+    if (amount) {
+      const clean = amount.split('.')[0]; // integer part
+      const val = parseFloat(amount);
+      // If the integer part is > 15 digits it is almost certainly raw Wei
+      if (clean.length > 15) {
+        const converted = parseFloat(formatUnits(BigInt(clean), 18));
+        return converted.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+      }
+      if (!isNaN(val)) {
+        return val.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+      }
+    }
+  } catch { /* fall through */ }
+
+  return '0.0000';
+}
+
 export function LedgerPage() {
   const { address } = useAccount();
   const { isLoaded, isSignedIn } = useAuth();
@@ -94,7 +127,7 @@ export function LedgerPage() {
     if (!transactions.length) return;
     const headers = ['Date,Type,From,To,Amount(POL),Campaign,TxHash,Status\n'];
     const rows = transactions.map(tx => 
-      `${new Date(tx.createdAt).toISOString()},${getTransferLabel(tx.type)},${tx.fromAddress},${tx.toAddress},${tx.amount},"${tx.campaign?.title ?? 'Unknown'}",${tx.txHash},${tx.status}`
+      `${new Date(tx.createdAt).toISOString()},${getTransferLabel(tx.type)},${tx.fromAddress},${tx.toAddress},${formatLedgerAmount(tx.amount, tx.amountWei)},"${tx.campaign?.title ?? 'Unknown'}",${tx.txHash},${tx.status}`
     );
     const blob = new Blob([headers.join('') + rows.join('\n')], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -266,7 +299,7 @@ export function LedgerPage() {
                       </div>
                     </td>
                     <td className="py-3 px-4 text-right whitespace-nowrap">
-                      <div className="font-semibold text-slate-200">{tx.amount}</div>
+                      <div className="font-semibold text-slate-200">{formatLedgerAmount(tx.amount, tx.amountWei)}</div>
                       <div className="text-xs text-slate-500">POL</div>
                     </td>
                     <td className="py-3 px-4 max-w-[200px]">
