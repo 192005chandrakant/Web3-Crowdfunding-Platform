@@ -18,6 +18,7 @@ const { isResendConfigured } = require("./emailService");
 const { getRedisClient } = require("../config/redis");
 const { getProvider } = require("./blockchainService");
 const { startGanacheListener } = require("./ganacheEventListener");
+const BlockchainProviderFactory = require("../config/provider");
 
 class ServiceManager {
   constructor() {
@@ -37,8 +38,15 @@ class ServiceManager {
    * Initialize and register all microservices and observer channels on server boot.
    */
   async initServices() {
+    const blockchainMode = BlockchainProviderFactory.getMode();
+    const rpcUrl = BlockchainProviderFactory.getRpcUrl(blockchainMode);
+    const chainId = BlockchainProviderFactory.getChainId();
+
     console.log("\n=======================================================");
     console.log("  BOOTSTRAPPING MILESTONECHAIN INTEGRATED SERVICES");
+    console.log("=======================================================");
+    console.log(`  Blockchain Mode: ${blockchainMode.toUpperCase()} | Chain: ${chainId}`);
+    console.log(`  RPC:             ${rpcUrl}`);
     console.log("=======================================================");
 
     // 0. Verify MongoDB Primary Database Status
@@ -117,16 +125,13 @@ class ServiceManager {
       console.warn("⚠ Blockchain Provider init warning:", err.message);
     }
 
-    // 7. Start Ganache event listener if running in local dev (chainId 1337)
+    // 7. Start blockchain event listener (works in both local and rpc modes)
     try {
-      const envChain = Number(process.env.CHAIN_ID) || 80002;
-      if (envChain === 1337 || envChain === 80002) {
-        startGanacheListener().catch((err) => {
-          console.error("✗ Ganache listener failed to start:", err.message);
-        });
-      }
+      startGanacheListener().catch((err) => {
+        console.error("✗ Blockchain listener failed to start:", err.message);
+      });
     } catch (err) {
-      console.warn("⚠ Ganache listener startup warning:", err.message);
+      console.warn("⚠ Blockchain listener startup warning:", err.message);
     }
 
     this.initialized = true;

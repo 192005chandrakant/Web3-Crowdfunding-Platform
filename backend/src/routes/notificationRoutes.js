@@ -1,6 +1,7 @@
 const express = require("express");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateRequest } = require("../middleware/validateRequest");
+const { requireSiweAuth } = require("../middleware/siweAuth");
 const {
   walletAddressParamSchema,
   createNotificationSchema,
@@ -32,14 +33,16 @@ router.post(
 
 router.get(
   "/:walletAddress",
+  requireSiweAuth,
   validateRequest(walletAddressParamSchema, "params"),
   asyncHandler(listNotifications)
 );
 
-router.post("/", validateRequest(createNotificationSchema, "body"), asyncHandler(createNotification));
+router.post("/", requireSiweAuth, validateRequest(createNotificationSchema, "body"), asyncHandler(createNotification));
 
 router.patch(
   "/:id/read",
+  requireSiweAuth,
   validateRequest(notificationIdSchema, "params"),
   asyncHandler(markNotificationRead)
 );
@@ -47,6 +50,7 @@ router.patch(
 // Mark ALL unread notifications for a wallet as read
 router.patch(
   "/:walletAddress/read-all",
+  requireSiweAuth,
   validateRequest(walletAddressParamSchema, "params"),
   asyncHandler(markAllNotificationsRead)
 );

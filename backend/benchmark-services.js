@@ -69,8 +69,9 @@ async function runEfficiencyBenchmarks() {
   console.log('\nTesting Email Notifications (Resend)...');
   const { sendNotificationEmail, isResendConfigured } = require('./src/services/emailService');
   if (isResendConfigured()) {
+    const recipient = process.env.TEST_EMAIL || process.env.RESEND_FROM_EMAIL || 'delivered@resend.dev';
     results.push(await measureLatency('Resend Email Send', () => sendNotificationEmail({
-      to: 'test@example.com',
+      to: recipient,
       subject: 'Benchmark Test',
       html: '<p>Test</p>'
     })));

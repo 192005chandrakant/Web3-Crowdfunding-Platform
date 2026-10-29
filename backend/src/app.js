@@ -29,6 +29,7 @@ const env = getEnvConfig();
 const port = env.port;
 
 const allowedOrigins = env.allowedOrigin.split(",").map(o => o.trim());
+allowedOrigins.push(`http://localhost:${port}`, `http://127.0.0.1:${port}`);
 app.use(
   cors({
     origin: function (origin, callback) {

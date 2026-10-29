@@ -1,7 +1,8 @@
-﻿const { ethers } = require("ethers");
-const http = require("http");
+const { ethers } = require("ethers");
+const http  = require("http");
+const https = require("https");
 const BlockchainEvent = require("../models/BlockchainEvent");
-const { getEnvConfig } = require("../config/env");
+const BlockchainProviderFactory = require("../config/provider");
 const { processEvent } = require("./eventProcessorService");
 
 const FACTORY_ABI = [
@@ -21,28 +22,30 @@ let registeredCampaigns = new Set();
 
 /**
  * Probe whether the JSON-RPC endpoint is reachable before creating a provider.
+ * Supports both http and https (needed for Alchemy endpoints).
  * Returns true if the node responds, false if the connection is refused / times out.
- * This prevents flooding the console with ECONNREFUSED / JsonRpcProvider retry
- * messages when Ganache has not been started yet.
  */
 function isRpcReachable(rpcUrl) {
   return new Promise((resolve) => {
     try {
       const url = new URL(rpcUrl);
-      const port = parseInt(url.port, 10) || (url.protocol === "https:" ? 443 : 80);
-      const req = http.request(
+      const isHttps = url.protocol === "https:";
+      const port = parseInt(url.port, 10) || (isHttps ? 443 : 80);
+      const transport = isHttps ? https : http;
+
+      const req = transport.request(
         {
           hostname: url.hostname,
           port,
-          method: "POST",
-          path: url.pathname || "/",
-          timeout: 2000
+          method:   "POST",
+          path:     url.pathname || "/",
+          timeout:  4000,
+          ...(isHttps ? { rejectUnauthorized: true } : {})
         },
         () => resolve(true)
       );
-      req.on("error", () => resolve(false));
+      req.on("error",   () => resolve(false));
       req.on("timeout", () => { req.destroy(); resolve(false); });
-      // Send a minimal JSON-RPC payload so the server actually processes the request
       req.write(JSON.stringify({ jsonrpc: "2.0", method: "net_version", params: [], id: 1 }));
       req.end();
     } catch {
@@ -53,13 +56,29 @@ function isRpcReachable(rpcUrl) {
 
 function getProvider() {
   if (provider) return provider;
-  const { rpcUrl } = getEnvConfig();
-  provider = new ethers.JsonRpcProvider(rpcUrl);
+  provider = BlockchainProviderFactory.getProvider();
   return provider;
+}
+
+function extractEventLogMeta(event) {
+  if (!event) return { txHash: null, blockNumber: null };
+  const txHash =
+    event.transactionHash ||
+    event.log?.transactionHash ||
+    (typeof event === "string" ? event : null);
+  const blockNumber =
+    event.blockNumber ??
+    event.log?.blockNumber ??
+    null;
+  return { txHash, blockNumber };
 }
 
 async function ensureRecordedAndProcess(eventName, contractAddress, txHash, blockNumber, data) {
   try {
+    if (!txHash) {
+      console.warn(`[ganache-listener] Skipping ${eventName} event on ${contractAddress}: missing txHash`);
+      return;
+    }
     const tx = txHash.toLowerCase();
     const existing = await BlockchainEvent.findOne({ txHash: tx }).lean();
     if (existing) return;
@@ -93,7 +112,8 @@ async function registerCampaignListeners(campaignAddress) {
   const contract = new ethers.Contract(campaignAddress, CAMPAIGN_ABI, prov);
 
   contract.on("ContributionReceived", (contributor, amount, qvPower, event) => {
-    ensureRecordedAndProcess("ContributionReceived", campaignAddress, event.transactionHash, event.blockNumber, {
+    const { txHash, blockNumber } = extractEventLogMeta(event);
+    ensureRecordedAndProcess("ContributionReceived", campaignAddress, txHash, blockNumber, {
       contributor,
       amount: amount.toString(),
       amountWei: amount.toString(),
@@ -102,7 +122,8 @@ async function registerCampaignListeners(campaignAddress) {
   });
 
   contract.on("MilestoneProofSubmitted", (milestoneIndex, cid, snapshotTotalQVWeight, event) => {
-    ensureRecordedAndProcess("MilestoneProofSubmitted", campaignAddress, event.transactionHash, event.blockNumber, {
+    const { txHash, blockNumber } = extractEventLogMeta(event);
+    ensureRecordedAndProcess("MilestoneProofSubmitted", campaignAddress, txHash, blockNumber, {
       milestoneIndex: Number(milestoneIndex),
       cid,
       snapshotTotalQVWeight: snapshotTotalQVWeight.toString()
@@ -110,7 +131,8 @@ async function registerCampaignListeners(campaignAddress) {
   });
 
   contract.on("MilestoneVoted", (milestoneIndex, voter, support, qvWeight, rawContribution, event) => {
-    ensureRecordedAndProcess("MilestoneVoted", campaignAddress, event.transactionHash, event.blockNumber, {
+    const { txHash, blockNumber } = extractEventLogMeta(event);
+    ensureRecordedAndProcess("MilestoneVoted", campaignAddress, txHash, blockNumber, {
       milestoneIndex: Number(milestoneIndex),
       voter,
       support,
@@ -120,7 +142,8 @@ async function registerCampaignListeners(campaignAddress) {
   });
 
   contract.on("TrancheExecuted", (milestoneIndex, recipient, amount, event) => {
-    ensureRecordedAndProcess("TrancheExecuted", campaignAddress, event.transactionHash, event.blockNumber, {
+    const { txHash, blockNumber } = extractEventLogMeta(event);
+    ensureRecordedAndProcess("TrancheExecuted", campaignAddress, txHash, blockNumber, {
       milestoneIndex: Number(milestoneIndex),
       recipient,
       amount: amount.toString()
@@ -128,7 +151,8 @@ async function registerCampaignListeners(campaignAddress) {
   });
 
   contract.on("RefundClaimed", (contributor, amount, event) => {
-    ensureRecordedAndProcess("RefundClaimed", campaignAddress, event.transactionHash, event.blockNumber, {
+    const { txHash, blockNumber } = extractEventLogMeta(event);
+    ensureRecordedAndProcess("RefundClaimed", campaignAddress, txHash, blockNumber, {
       contributor,
       amount: amount.toString()
     });
@@ -139,30 +163,32 @@ async function registerCampaignListeners(campaignAddress) {
 }
 
 async function startGanacheListener() {
-  const env = getEnvConfig();
-  const chainId = env.chainId;
-  if (chainId !== 1337 && chainId !== 80002) {
-    console.log("[ganache-listener] Skipping listener: not running on Ganache (chainId not 1337 or 80002)");
-    return;
-  }
+  const rpcUrl     = BlockchainProviderFactory.getRpcUrl(BlockchainProviderFactory.getMode());
+  const chainId    = BlockchainProviderFactory.getChainId();
+  const mode       = BlockchainProviderFactory.getMode();
 
-  // -- Reachability probe ----------------------------------------------------
-  // Only attempt to connect if the local RPC node is actually up.
-  // This prevents flooding the console with ECONNREFUSED / JsonRpcProvider
-  // retry messages when Ganache has not been started yet.
-  const reachable = await isRpcReachable(env.rpcUrl);
+  console.log(`[blockchain-listener] Starting in ${mode.toUpperCase()} mode (chainId ${chainId}) on ${rpcUrl}`);
+
+  // -- Reachability probe ---------------------------------------------------
+  const reachable = await isRpcReachable(rpcUrl);
   if (!reachable) {
-    console.warn(
-      `[ganache-listener] WARNING: RPC node not reachable at ${env.rpcUrl}.\n` +
-      `   Start Ganache first (Option B - Amoy chain ID):\n` +
-      `     ganache --server.host 127.0.0.1 --server.port 8545 --chain.chainId ${chainId}\n` +
-      `   Then deploy contracts:\n` +
-      `     cd blockchain && npm run deploy:ganache-amoy\n` +
-      `   Blockchain event listener will be INACTIVE for this session.`
-    );
+    if (mode === "local") {
+      console.warn(
+        `[blockchain-listener] WARNING: Local RPC node not reachable at ${rpcUrl}.\n` +
+        `   Start Ganache first:\n` +
+        `     ganache --server.host 127.0.0.1 --server.port 7545 --chain.chainId ${chainId}\n` +
+        `   Blockchain event listener will be INACTIVE for this session.`
+      );
+    } else {
+      console.warn(
+        `[blockchain-listener] WARNING: Alchemy RPC not reachable at ${rpcUrl}.\n` +
+        `   Check your ALCHEMY_AMOY_URL and internet connection.\n` +
+        `   Blockchain event listener will be INACTIVE for this session.`
+      );
+    }
     return;
   }
-  // --------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
 
   const prov = getProvider();
   const factoryAddress =
@@ -170,18 +196,19 @@ async function startGanacheListener() {
     process.env.VITE_FACTORY_CONTRACT_ADDRESS ||
     process.env.FACTORY_CONTRACT_ADDRESS;
   if (!factoryAddress) {
-    console.warn("[ganache-listener] No factory address configured (CAMPAIGN_FACTORY_ADDRESS, VITE_FACTORY_CONTRACT_ADDRESS or FACTORY_CONTRACT_ADDRESS)");
+    console.warn(`[blockchain-listener] No factory address configured. Set CAMPAIGN_FACTORY_ADDRESS in backend/.env.`);
   } else {
     const factory = new ethers.Contract(factoryAddress, FACTORY_ABI, prov);
     factory.on("CampaignCreated", async (campaignAddress, creator, goal, event) => {
-      console.log(`[ganache-listener] CampaignCreated: ${campaignAddress} by ${creator}`);
-      await ensureRecordedAndProcess("CampaignCreated", campaignAddress, event.transactionHash, event.blockNumber, {
+      console.log(`[blockchain-listener] CampaignCreated: ${campaignAddress} by ${creator}`);
+      const { txHash, blockNumber } = extractEventLogMeta(event);
+      await ensureRecordedAndProcess("CampaignCreated", campaignAddress, txHash, blockNumber, {
         creator,
         goal: goal.toString()
       });
       await registerCampaignListeners(campaignAddress);
     });
-    console.log(`[ganache-listener] Listening for CampaignCreated on factory ${factoryAddress}`);
+    console.log(`[blockchain-listener] Listening for CampaignCreated on factory ${factoryAddress}`);
   }
 
   // Scan existing campaigns from DB and register their listeners (idempotent)
@@ -192,7 +219,7 @@ async function startGanacheListener() {
       try {
         await registerCampaignListeners(c.contractAddress);
       } catch (err) {
-        console.warn(`[ganache-listener] Failed registering ${c.contractAddress}:`, err.message);
+        console.warn(`[blockchain-listener] Failed registering ${c.contractAddress}:`, err.message);
       }
     }
   }
@@ -201,7 +228,13 @@ async function startGanacheListener() {
   // started are still processed.
   try {
     const latestBlock = await prov.getBlockNumber();
-    const fromBlock = Number(process.env.GANACHE_SYNC_FROM_BLOCK || 0);
+    let fromBlock = Number(process.env.GANACHE_SYNC_FROM_BLOCK || 0);
+
+    // Alchemy Free tier limits eth_getLogs to a 10-block range.
+    // In RPC mode, query the last 10 blocks by default to prevent 400 Bad Request.
+    if (mode === "rpc" && fromBlock === 0) {
+      fromBlock = Math.max(0, latestBlock - 9);
+    }
 
     if (factoryAddress) {
       const factoryIface = new ethers.Interface(FACTORY_ABI);

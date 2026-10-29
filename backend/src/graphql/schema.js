@@ -17,8 +17,9 @@ const typeDefs = /* GraphQL */ `
     targetAmount: String!
     deadline: String!
     ipfsProofHash: String!
-    approvalVotes: String!
-    rejectionVotes: String!
+    approvalQVWeight: String!
+    rejectionQVWeight: String!
+    snapshotTotalQVWeight: String!
     isCurrent: Boolean!
     isPaid: Boolean!
   }

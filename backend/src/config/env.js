@@ -14,17 +14,31 @@ function requireEnv(name, { optional = false } = {}) {
 }
 
 function getEnvConfig() {
+  const blockchainMode = (process.env.BLOCKCHAIN_MODE || "rpc").toLowerCase();
+
+  // Strategy pattern: resolve RPC URL based on BLOCKCHAIN_MODE
+  let rpcUrl;
+  if (blockchainMode === "local") {
+    rpcUrl =
+      process.env.LOCAL_RPC_URL ||
+      process.env.GANACHE_RPC_URL ||
+      process.env.BLOCKCHAIN_RPC_URL ||
+      "http://127.0.0.1:7545";
+  } else {
+    rpcUrl =
+      process.env.ALCHEMY_AMOY_URL ||
+      process.env.BLOCKCHAIN_RPC_URL ||
+      process.env.RPC_URL ||
+      "https://rpc-amoy.polygon.technology";
+  }
+
   return {
     port: Number(process.env.PORT) || 5000,
     mongoUri: requireEnv("MONGODB_URI"),
     allowedOrigin: process.env.ALLOWED_ORIGIN || "http://localhost:5173",
+    blockchainMode,
     chainId: Number(process.env.CHAIN_ID) || 80002,
-    rpcUrl:
-      process.env.BLOCKCHAIN_RPC_URL ||
-      process.env.ALCHEMY_AMOY_URL ||
-      process.env.GANACHE_RPC_URL ||
-      process.env.ALCHEMY_RPC_URL ||
-      "https://rpc-amoy.polygon.technology",
+    rpcUrl,
     pinata: {
       apiKey: process.env.PINATA_API_KEY,
       apiSecret: process.env.PINATA_API_SECRET,

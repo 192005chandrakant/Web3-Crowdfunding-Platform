@@ -8,11 +8,6 @@ function isPinataConfigured() {
 }
 
 function getPinataAuthHeaders() {
-  const jwt = process.env.PINATA_JWT?.trim();
-  if (jwt) {
-    return { Authorization: `Bearer ${jwt}` };
-  }
-
   const apiKey = process.env.PINATA_API_KEY?.trim();
   const apiSecret = process.env.PINATA_API_SECRET?.trim();
   if (apiKey && apiSecret) {
@@ -20,6 +15,11 @@ function getPinataAuthHeaders() {
       pinata_api_key: apiKey,
       pinata_secret_api_key: apiSecret
     };
+  }
+
+  const jwt = process.env.PINATA_JWT?.trim();
+  if (jwt) {
+    return { Authorization: `Bearer ${jwt}` };
   }
 
   throw new Error("Missing Pinata credentials");

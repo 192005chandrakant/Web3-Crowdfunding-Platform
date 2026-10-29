@@ -1,5 +1,5 @@
 const { ethers } = require("ethers");
-const { getEnvConfig } = require("../config/env");
+const BlockchainProviderFactory = require("../config/provider");
 const {
   getBlockchainStateFromCache,
   cacheBlockchainState
@@ -19,10 +19,13 @@ function getProvider() {
   if (provider) {
     return provider;
   }
-
-  const { rpcUrl } = getEnvConfig();
-  provider = new ethers.JsonRpcProvider(rpcUrl);
+  provider = BlockchainProviderFactory.getProvider();
   return provider;
+}
+
+// Allow tests / mode-switching to reset the cached provider
+function resetProvider() {
+  provider = null;
 }
 
 function formatWei(value) {
@@ -103,4 +106,4 @@ async function fetchOnChainCampaignState(contractAddress) {
   return state;
 }
 
-module.exports = { fetchOnChainCampaignState, getProvider };
+module.exports = { fetchOnChainCampaignState, getProvider, resetProvider };
