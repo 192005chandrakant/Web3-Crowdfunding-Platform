@@ -6,9 +6,11 @@
     "scripts":  {
                     "dev":  "nodemon src/app.js",
                     "start":  "node src/app.js",
+                    "test:system": "node tests/system.test.js",
                     "seed:admin":  "node scripts/seedAdmin.js",
                     "smoke":  "node scripts/smoke.js",
                     "test:services":  "node test-services.js",
+                    "test:workflow":  "node scripts/verify-workflow.js",
                     "benchmark":  "node benchmark-services.js"
                 },
     "dependencies":  {
