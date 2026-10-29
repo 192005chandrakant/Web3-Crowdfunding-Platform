@@ -45,7 +45,8 @@ const defaultAllowed = [
   "http://localhost:3000",
   "http://localhost:4173",
   "http://127.0.0.1:5173",
-  "http://127.0.0.1:3000"
+  "http://127.0.0.1:3000",
+  "https://web3-crowdfunding-platform.onrender.com"
 ];
 
 const allAllowedOrigins = new Set([...configuredOrigins, ...defaultAllowed]);
