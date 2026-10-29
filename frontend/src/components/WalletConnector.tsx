@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { Button, Alert, Badge } from "@/components/ui";
-import { TARGET_CHAIN_ID, getAddressUrl, getChainLabel } from "@/lib/chain";
+import { TARGET_CHAIN_ID, getAddressUrl, getChainLabel, getTargetChainMetadata } from "@/lib/chain";
 
 
 // ─── Connection state helpers ──────────────────────────────────────────────
@@ -45,8 +45,9 @@ interface WalletConnectorProps {
 }
 
 export function WalletConnector({ onAuthenticated, className }: WalletConnectorProps) {
-  const { address, isConnected }        = useAccount();
-  const chainId                         = useChainId();
+  const { address, isConnected, chain } = useAccount();
+  const wagmiChainId                    = useChainId();
+  const activeChainId                   = chain?.id ?? wagmiChainId;
   const { connectors, connectAsync, isPending }  = useConnect();
   const { disconnect }                  = useDisconnect();
   const { signMessageAsync, isPending: isSigning } = useSignMessage();
@@ -58,23 +59,23 @@ export function WalletConnector({ onAuthenticated, className }: WalletConnectorP
       return;
     }
 
-    const targetChainHex = `0x${TARGET_CHAIN_ID.toString(16)}`;
+    const meta = getTargetChainMetadata();
 
     try {
       await provider.request({
         method: "wallet_switchEthereumChain",
-        params: [{ chainId: targetChainHex }]
+        params: [{ chainId: meta.chainIdHex }]
       });
     } catch (error: any) {
       if (error?.code === 4902) {
         await provider.request({
           method: "wallet_addEthereumChain",
           params: [{
-            chainId: targetChainHex,
-            chainName: "Local Ganache",
-            nativeCurrency: { name: "MATIC", symbol: "MATIC", decimals: 18 },
-            rpcUrls: ["http://127.0.0.1:8545"],
-            blockExplorerUrls: []
+            chainId: meta.chainIdHex,
+            chainName: meta.chainName,
+            nativeCurrency: meta.nativeCurrency,
+            rpcUrls: meta.rpcUrls,
+            blockExplorerUrls: meta.blockExplorerUrls
           }]
         });
       } else {
@@ -87,7 +88,7 @@ export function WalletConnector({ onAuthenticated, className }: WalletConnectorP
   const status: WalletStatus = (() => {
     if (!isConnected) return "disconnected";
     if (isPending)    return "connecting";
-    if (!isSupported(chainId)) return "wrong-network";
+    if (!isSupported(activeChainId)) return "wrong-network";
     if (isSigning)    return "signing";
     return "connected";
   })();
@@ -107,7 +108,7 @@ export function WalletConnector({ onAuthenticated, className }: WalletConnectorP
       "",
       `URI: ${uri}`,
       "Version: 1",
-      `Chain ID: ${chainId ?? TARGET_CHAIN_ID}`,
+      `Chain ID: ${activeChainId ?? TARGET_CHAIN_ID}`,
       `Nonce: ${nonce}`,
       `Issued At: ${new Date().toISOString()}`
     ].join("\n");
@@ -160,11 +161,11 @@ export function WalletConnector({ onAuthenticated, className }: WalletConnectorP
                 <span
                   className={clsx(
                     "h-1.5 w-1.5 rounded-full",
-                    isSupported(chainId) ? "bg-success-400" : "bg-danger-400"
+                    isSupported(activeChainId) ? "bg-success-400" : "bg-danger-400"
                   )}
                   aria-hidden="true"
                 />
-                <span className="text-xs text-slate-400">{getNetworkName(chainId)}</span>
+                <span className="text-xs text-slate-400">{getNetworkName(activeChainId)}</span>
               </div>
             </div>
           </div>
@@ -177,7 +178,7 @@ export function WalletConnector({ onAuthenticated, className }: WalletConnectorP
           <div className="space-y-3">
             <p>Please switch to {getChainLabel(TARGET_CHAIN_ID)} in your wallet to use MilestoneChain.</p>
             <Button variant="secondary" size="sm" onClick={handleSwitchNetwork}>
-              Switch to Local Ganache
+              Switch to {getChainLabel(TARGET_CHAIN_ID)}
             </Button>
           </div>
         </Alert>
@@ -235,7 +236,7 @@ export function WalletConnector({ onAuthenticated, className }: WalletConnectorP
                 variant="ghost"
                 size="sm"
                 leadingIcon={<ExternalLink className="h-3.5 w-3.5" />}
-                to={getAddressUrl(chainId ?? TARGET_CHAIN_ID, address)}
+                to={getAddressUrl(activeChainId ?? TARGET_CHAIN_ID, address)}
               >
                 View on Explorer
               </Button>

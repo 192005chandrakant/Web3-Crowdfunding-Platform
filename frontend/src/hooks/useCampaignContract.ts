@@ -16,7 +16,7 @@ import { TARGET_CHAIN_ID } from "@/lib/chain";
 // Polygon Amoy enforces a 25 gwei gas floor. Use a fixed legacy gas price so
 // wallets reserve a predictable amount instead of showing oversized ceilings.
 const AMOY_GAS_OVERRIDES = {
-  gasPrice: parseGwei("25")
+  maxPriorityFeePerGas: parseGwei("25")
 } as const;
 
 const VOTE_GAS_FALLBACK = 180_000n;
@@ -35,6 +35,25 @@ async function ensureWalletOnTargetChain() {
   }
 
   const targetChainHex = `0x${TARGET_CHAIN_ID.toString(16)}`;
+  const blockchainMode = import.meta.env.VITE_BLOCKCHAIN_MODE || "rpc";
+  const isAmoy = TARGET_CHAIN_ID === 80002;
+
+  // Build chain params that match the active mode
+  const chainParams = isAmoy
+    ? {
+        chainId:         targetChainHex,
+        chainName:       "Polygon Amoy Testnet",
+        nativeCurrency:  { name: "POL", symbol: "POL", decimals: 18 },
+        rpcUrls:         [import.meta.env.VITE_ALCHEMY_RPC_URL || "https://rpc-amoy.polygon.technology"],
+        blockExplorerUrls: ["https://amoy.polygonscan.com"]
+      }
+    : {
+        chainId:         targetChainHex,
+        chainName:       `Local Ganache (${TARGET_CHAIN_ID})`,
+        nativeCurrency:  { name: "MATIC", symbol: "MATIC", decimals: 18 },
+        rpcUrls:         [import.meta.env.VITE_GANACHE_RPC_URL || "http://127.0.0.1:7545"],
+        blockExplorerUrls: []
+      };
 
   try {
     await provider.request({
@@ -45,17 +64,7 @@ async function ensureWalletOnTargetChain() {
     if (error?.code === 4902) {
       await provider.request({
         method: "wallet_addEthereumChain",
-        params: [{
-          chainId: targetChainHex,
-          chainName: "Local Ganache",
-          nativeCurrency: {
-            name: "MATIC",
-            symbol: "MATIC",
-            decimals: 18
-          },
-          rpcUrls: ["http://127.0.0.1:8545"],
-          blockExplorerUrls: []
-        }]
+        params: [chainParams]
       });
     } else {
       throw error;

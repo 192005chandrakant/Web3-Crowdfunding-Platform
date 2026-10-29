@@ -22,6 +22,7 @@ import { useAccount } from "wagmi";
 import { useAuth } from "@clerk/clerk-react";
 import { useUnreadNotificationCount } from "@/hooks/useNotifications";
 import { BrandLogo } from "@/components/BrandLogo";
+import { TARGET_CHAIN_ID, getChainLabel } from "@/lib/chain";
 
 const ADMIN_WALLETS = (import.meta.env.VITE_ADMIN_WALLET_ADDRESSES || "")
   .split(",")
@@ -186,7 +187,7 @@ export function DesktopSidebar() {
           <ChevronRight className="h-4 w-4" aria-hidden="true" />
         </Link>
         <p className="mt-3 text-center text-[10px] text-slate-500">
-          Polygon Amoy Testnet
+          {getChainLabel(TARGET_CHAIN_ID)}
         </p>
       </div>
     </aside>
