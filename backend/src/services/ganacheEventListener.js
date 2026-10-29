@@ -57,6 +57,17 @@ function isRpcReachable(rpcUrl) {
 function getProvider() {
   if (provider) return provider;
   provider = BlockchainProviderFactory.getProvider();
+
+  // Absorb transient Alchemy filter expiry errors from event polling
+  if (provider && typeof provider.on === "function") {
+    provider.on("error", (err) => {
+      if (err?.error?.code === -32000 || err?.message?.includes("filter not found")) {
+        return;
+      }
+      console.warn("[blockchain-listener] RPC Provider warning:", err?.message || err);
+    });
+  }
+
   return provider;
 }
 

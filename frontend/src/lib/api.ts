@@ -5,8 +5,9 @@
 import type { SiwePayload } from "@/store/authStore";
 import type { CampaignCardData } from "@/components/CampaignCard";
 
-const BASE_URL =
+const rawBaseUrl =
   (import.meta.env.VITE_BACKEND_URL as string) || "http://localhost:5000";
+const BASE_URL = rawBaseUrl.replace(/\/+$/, "");
 
 // ─── Campaign interfaces ────────────────────────────────────────────────────
 

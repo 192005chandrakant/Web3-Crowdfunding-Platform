@@ -12,6 +12,9 @@ class RealtimeSSEObserver {
     this.heartbeatInterval = setInterval(() => {
       this.sendHeartbeat();
     }, 25000);
+    if (this.heartbeatInterval?.unref) {
+      this.heartbeatInterval.unref();
+    }
   }
 
   /**

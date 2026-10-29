@@ -5,7 +5,8 @@
 
 // ─── Factory address ──────────────────────────────────────────────────────
 export const FACTORY_ADDRESS =
-  (import.meta.env.VITE_FACTORY_CONTRACT_ADDRESS as string) || "";
+  (import.meta.env.VITE_FACTORY_CONTRACT_ADDRESS as string) ||
+  "0x4B3E9091e8A15AdcC8fcC1FCC7D6D273F4Cc2D01";
 
 // ─── CampaignFactory ABI (minimal — only the events + functions we call) ──
 export const CAMPAIGN_FACTORY_ABI = [
